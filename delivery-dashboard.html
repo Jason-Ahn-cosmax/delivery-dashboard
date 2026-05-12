@@ -1,0 +1,1674 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>납기준수율 / 수량완납율 대시보드</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', 'Malgun Gothic', sans-serif; background: #f0f2f5; color: #333; font-size: 13px; }
+
+  /* Header */
+  .header {
+    background: linear-gradient(135deg, #1a237e, #283593);
+    color: #fff; padding: 18px 32px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .header h1 { font-size: 20px; font-weight: 600; }
+  .header .subtitle { font-size: 12px; opacity: 0.8; margin-top: 3px; }
+  .header-right { text-align: right; font-size: 12px; opacity: 0.7; }
+
+  /* Tabs */
+  .tabs { display: flex; background: #fff; border-bottom: 2px solid #e0e0e0; padding: 0 32px; }
+  .tab {
+    padding: 12px 22px; cursor: pointer; font-size: 13px; font-weight: 500;
+    border-bottom: 3px solid transparent; transition: all 0.2s; color: #666;
+  }
+  .tab:hover { color: #1a237e; }
+  .tab.active { color: #1a237e; border-bottom-color: #1a237e; font-weight: 600; }
+
+  .container { max-width: 1440px; margin: 0 auto; padding: 20px 32px; }
+  .section { display: none; }
+  .section.active { display: block; }
+
+  /* KPI Cards */
+  .kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 20px; }
+  .kpi-card { background: #fff; border-radius: 10px; padding: 16px 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+  .kpi-card .label { font-size: 11px; color: #888; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .kpi-card .value { font-size: 26px; font-weight: 700; }
+  .kpi-card .sub { font-size: 11px; color: #999; margin-top: 3px; }
+  .kpi-good { color: #1a237e; }
+  .kpi-bad { color: #c62828; }
+
+  /* Filter bar */
+  .filter-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+  .filter-bar label { font-size: 12px; font-weight: 600; color: #555; }
+  .filter-bar select { padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; }
+
+  /* Charts */
+  .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .chart-box { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+  .chart-box h3 { font-size: 13px; margin-bottom: 10px; color: #444; }
+  .chart-box.full { grid-column: 1 / -1; }
+
+  /* Tables */
+  .table-box { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); margin-bottom: 20px; overflow-x: auto; }
+  .table-box h3 { font-size: 13px; margin-bottom: 10px; color: #444; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #f5f6fa; padding: 8px 10px; text-align: center; font-weight: 600; color: #555; border-bottom: 2px solid #e0e0e0; white-space: nowrap; }
+  td { padding: 7px 10px; text-align: center; border-bottom: 1px solid #f0f0f0; white-space: nowrap; }
+  tr:hover td { background: #fafbff; }
+  .rate-good { color: #1a237e; font-weight: 600; }
+  .rate-good-qr { color: #2e7d32; font-weight: 600; }
+  .rate-bad { color: #c62828; font-weight: 600; }
+
+  /* Upload section */
+  .upload-area {
+    background: #fff; border: 2px dashed #c5cae9; border-radius: 12px; padding: 40px; text-align: center;
+    margin-bottom: 20px; transition: all 0.3s; cursor: pointer;
+  }
+  .upload-area:hover, .upload-area.dragover { border-color: #1a237e; background: #e8eaf6; }
+  .upload-area h3 { font-size: 16px; color: #1a237e; margin-bottom: 8px; }
+  .upload-area p { font-size: 12px; color: #888; }
+  .upload-area input { display: none; }
+
+  /* Buttons */
+  .btn { padding: 8px 16px; border: none; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+  .btn-primary { background: #1a237e; color: #fff; }
+  .btn-primary:hover { background: #283593; }
+  .btn-success { background: #2e7d32; color: #fff; }
+  .btn-success:hover { background: #388e3c; }
+  .btn-danger { background: #c62828; color: #fff; margin-left: 8px; }
+  .btn-outline { background: #fff; color: #1a237e; border: 1px solid #1a237e; }
+  .btn-outline:hover { background: #e8eaf6; }
+  .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* Form */
+  .form-section { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); margin-bottom: 20px; }
+  .form-section h3 { font-size: 14px; margin-bottom: 14px; color: #444; }
+
+  /* Status badge */
+  .badge { display: inline-block; padding: 3px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .badge-ok { background: #e8f5e9; color: #2e7d32; }
+  .badge-ng { background: #ffebee; color: #c62828; }
+
+  /* Upload history */
+  .upload-info { background: #e8eaf6; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 12px; color: #1a237e; }
+
+  /* Delay analysis */
+  .delay-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  /* Priority chip */
+  .priority-chip { display: inline-block; background: #fff3e0; color: #e65100; padding: 2px 7px; border-radius: 8px; font-size: 10px; font-weight: 600; margin-left: 4px; }
+
+  /* Trend arrow */
+  .trend-up { color: #1a237e; } .trend-up::before { content: "▲ "; }
+  .trend-up-qr { color: #2e7d32; } .trend-up-qr::before { content: "▲ "; }
+  .trend-down { color: #c62828; } .trend-down::before { content: "▼ "; }
+  .trend-flat { color: #888; } .trend-flat::before { content: "- "; }
+
+  /* Summary */
+  .sum-section { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); margin-bottom: 16px; }
+  .sum-section h3 { font-size: 14px; margin-bottom: 12px; color: #1a237e; border-bottom: 2px solid #e8eaf6; padding-bottom: 8px; }
+  .sum-kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+  .sum-kpi { text-align: center; padding: 12px; border-radius: 8px; background: #f5f6fa; }
+  .sum-kpi .label { font-size: 11px; color: #888; margin-bottom: 4px; }
+  .sum-kpi .value { font-size: 20px; font-weight: 700; }
+  .sum-kpi .diff { font-size: 12px; margin-top: 4px; }
+  .sum-comment { padding: 12px 16px; border-radius: 8px; font-size: 13px; line-height: 1.8; margin-bottom: 8px; }
+  .sum-good { background: #e8eaf6; border-left: 4px solid #1a237e; }
+  .sum-bad { background: #ffebee; border-left: 4px solid #c62828; }
+  .sum-neutral { background: #f5f5f5; border-left: 4px solid #888; }
+  .sum-list { font-size: 12px; line-height: 1.8; padding-left: 16px; }
+  .sum-list li { margin-bottom: 2px; }
+
+  /* Month checkbox filter */
+  .month-filter { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .month-cb { display: none; }
+  .month-label {
+    display: inline-block; padding: 4px 10px; border-radius: 14px; font-size: 11px; font-weight: 500;
+    border: 1px solid #c5cae9; color: #555; cursor: pointer; transition: all 0.2s; user-select: none;
+  }
+  .month-label:hover { border-color: #1a237e; color: #1a237e; }
+  .month-cb:checked + .month-label { background: #1a237e; color: #fff; border-color: #1a237e; }
+  .month-btn { padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 10px; cursor: pointer; background: #fff; color: #666; }
+  .month-btn:hover { background: #f5f5f5; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>납기준수율 / 수량완납율 대시보드</h1>
+    <div class="subtitle">고객사별 월별 누적 관리 | Raw Data 엑셀 업로드 방식</div>
+  </div>
+  <div class="header-right">
+    <div id="lastUpdate"></div>
+    <div id="dataStats"></div>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="dashboard">대시보드</div>
+  <div class="tab" data-tab="customer">고객사별 상세</div>
+  <div class="tab" data-tab="delay">지연 분석</div>
+  <div class="tab" data-tab="summary">Summary</div>
+  <div class="tab" data-tab="upload">데이터 업로드</div>
+</div>
+
+<div class="container">
+
+  <!-- ===== DASHBOARD ===== -->
+  <div class="section active" id="sec-dashboard">
+    <div class="filter-bar">
+      <label>연도:</label>
+      <select id="filterYear"></select>
+      <label>월:</label>
+      <div class="month-filter" id="monthFilter">
+        <button class="month-btn" onclick="toggleAllMonths(true)">전체</button>
+        <button class="month-btn" onclick="toggleAllMonths(false)">해제</button>
+      </div>
+      <label style="margin-left:8px;">고객사:</label>
+      <select id="filterCustomer"><option value="ALL">전체</option></select>
+    </div>
+
+    <div class="kpi-row" id="kpiRow"></div>
+
+    <div class="chart-grid">
+      <div class="chart-box"><h3>납기준수율 월별 추이</h3><canvas id="chartDelivery"></canvas></div>
+      <div class="chart-box"><h3>수량완납율 월별 추이</h3><canvas id="chartQuantity"></canvas></div>
+    </div>
+
+    <div class="chart-grid">
+      <div class="chart-box full">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+          <h3 id="custDeliveryTitle" style="margin:0;">고객사별 납기준수율 비교 (연간 누적)</h3>
+          <div style="display:flex; gap:12px; font-size:11px;">
+            <span><span style="display:inline-block;width:12px;height:12px;background:#1a237ecc;border-radius:2px;vertical-align:middle;margin-right:3px;"></span>목표 달성</span>
+            <span><span style="display:inline-block;width:12px;height:12px;background:#9fa8dacc;border-radius:2px;vertical-align:middle;margin-right:3px;"></span>목표 미달</span>
+          </div>
+        </div>
+        <canvas id="chartCustDelivery"></canvas>
+      </div>
+      <div class="chart-box full">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+          <h3 id="custQuantityTitle" style="margin:0;">고객사별 수량완납율 비교 (연간 누적)</h3>
+          <div style="display:flex; gap:12px; font-size:11px;">
+            <span><span style="display:inline-block;width:12px;height:12px;background:#2e7d32cc;border-radius:2px;vertical-align:middle;margin-right:3px;"></span>목표 달성</span>
+            <span><span style="display:inline-block;width:12px;height:12px;background:#a5d6a7cc;border-radius:2px;vertical-align:middle;margin-right:3px;"></span>목표 미달</span>
+          </div>
+        </div>
+        <canvas id="chartCustQuantity"></canvas>
+      </div>
+    </div>
+
+    <div class="table-box">
+      <h3>월별 납기준수율 요약 (고객사 x 월)</h3>
+      <table id="summaryDeliveryTable"></table>
+    </div>
+    <div class="table-box">
+      <h3>월별 수량완납율 요약 (고객사 x 월)</h3>
+      <table id="summaryQuantityTable"></table>
+    </div>
+  </div>
+
+  <!-- ===== CUSTOMER DETAIL ===== -->
+  <div class="section" id="sec-customer">
+    <div class="filter-bar">
+      <label>연도:</label>
+      <select id="custFilterYear"></select>
+      <label>고객사:</label>
+      <select id="custFilterCustomer"></select>
+      <button class="btn btn-success" onclick="exportCustomerExcel()">엑셀 다운로드</button>
+    </div>
+    <div class="kpi-row" id="custKpiRow" style="grid-template-columns: repeat(4, 1fr);"></div>
+    <div class="chart-grid">
+      <div class="chart-box"><h3>월별 납기준수율 추이</h3><canvas id="custChartDelivery"></canvas></div>
+      <div class="chart-box"><h3>월별 수량완납율 추이</h3><canvas id="custChartQuantity"></canvas></div>
+    </div>
+    <div class="table-box">
+      <h3>월별 상세 데이터</h3>
+      <table id="custDetailTable"></table>
+    </div>
+    <div class="table-box">
+      <h3>건별 Raw Data</h3>
+      <div id="rawFilterBar" class="filter-bar" style="margin-bottom:12px; display:none; flex-wrap:wrap; gap:8px;"></div>
+      <div id="rawFilterCount" style="font-size:11px; color:#888; margin-bottom:8px;"></div>
+      <div style="max-height:500px; overflow-y:auto;">
+        <table id="custRawTable"></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== DELAY ANALYSIS ===== -->
+  <div class="section" id="sec-delay">
+    <div class="filter-bar">
+      <label>연도:</label>
+      <select id="delayFilterYear"></select>
+      <label>월:</label>
+      <select id="delayFilterMonth"><option value="ALL">전체</option></select>
+    </div>
+    <div class="chart-grid">
+      <div class="chart-box full"><h3>월별 미준수 건수 추이</h3><canvas id="chartDelayTrend"></canvas></div>
+    </div>
+    <div class="chart-grid">
+      <div class="chart-box"><h3>납기지연 주체별 분포</h3><div style="max-width:380px; margin:0 auto;"><canvas id="chartDelayReason"></canvas></div><div id="delayReasonLegend"></div></div>
+      <div class="chart-box"><h3>고객사별 미준수 건수</h3><canvas id="chartDelayCustomer"></canvas></div>
+    </div>
+    <div class="table-box">
+      <h3>미준수 건 상세</h3>
+      <div id="delayDetailFilterBar" class="filter-bar" style="margin-bottom:12px; display:none; flex-wrap:wrap; gap:8px;"></div>
+      <div id="delayDetailCount" style="font-size:11px; color:#888; margin-bottom:8px;"></div>
+      <div style="max-height:500px; overflow-y:auto;">
+        <table id="delayDetailTable"></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SUMMARY ===== -->
+  <div class="section" id="sec-summary">
+    <div class="form-section">
+      <h3>기간 비교 설정</h3>
+      <div style="display:flex; gap:24px; align-items:end; flex-wrap:wrap;">
+        <div style="display:flex; gap:8px; align-items:end;">
+          <div class="form-group"><label>AS-IS (이전)</label><select id="sumAsYear"></select></div>
+          <div class="form-group"><label>&nbsp;</label><select id="sumAsMonth"></select></div>
+        </div>
+        <div style="font-size:20px; font-weight:700; color:#1a237e; padding-bottom:8px;">→</div>
+        <div style="display:flex; gap:8px; align-items:end;">
+          <div class="form-group"><label>TO-BE (현재)</label><select id="sumToYear"></select></div>
+          <div class="form-group"><label>&nbsp;</label><select id="sumToMonth"></select></div>
+        </div>
+        <button class="btn btn-primary" onclick="renderSummary()" style="margin-bottom:4px;">비교 분석</button>
+      </div>
+    </div>
+    <div id="summaryResult"></div>
+  </div>
+
+  <!-- ===== UPLOAD ===== -->
+  <div class="section" id="sec-upload">
+    <div class="upload-area" id="uploadArea">
+      <h3>엑셀 파일 업로드</h3>
+      <p>기존 양식의 엑셀 파일(.xlsx)을 드래그하거나 클릭하여 업로드하세요</p>
+      <p style="margin-top:8px; font-size:11px; color:#aaa;">Raw data 시트의 컬럼: 고객사(A), 연도(B), 월(C), ... 발주수량(J), 납품수량(K), ... 준수여부(T), 납기지연주최(U)</p>
+      <input type="file" id="fileInput" accept=".xlsx,.xls">
+    </div>
+
+    <div id="uploadHistory" class="form-section" style="display:none;">
+      <h3>업로드 이력</h3>
+      <div id="uploadHistoryList"></div>
+    </div>
+
+    <div class="form-section">
+      <h3>현재 데이터 현황</h3>
+      <div id="currentDataSummary"></div>
+    </div>
+
+    <div class="form-section">
+      <h3>설정</h3>
+      <div style="display:flex; gap:16px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
+        <label style="font-weight:600;">연도별 목표 설정:</label>
+        <div id="targetInputs"></div>
+        <button class="btn btn-primary" onclick="saveTargets()">목표 저장</button>
+      </div>
+      <div class="btn-group" style="margin-top:16px;">
+        <button class="btn btn-success" onclick="exportShareFile()" style="font-size:13px; padding:10px 20px;">팀 공유용 파일 생성</button>
+        <button class="btn btn-outline" onclick="exportBackup()">전체 백업 (JSON)</button>
+        <button class="btn btn-outline" onclick="document.getElementById('restoreFile').click()">백업 복원</button>
+        <input type="file" id="restoreFile" accept=".json" style="display:none;" onchange="importBackup(event)">
+        <button class="btn btn-danger" onclick="if(confirm('모든 데이터를 삭제하시겠습니까?')){localStorage.clear();location.reload();}">전체 초기화</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ==================== DATA STORE ====================
+const STORE = {
+  RAW: 'dd_raw_data',
+  PRIORITY: 'dd_priority',
+  TARGETS: 'dd_targets',
+  TARGETS_QR: 'dd_targets_qr',
+  HISTORY: 'dd_upload_history'
+};
+
+function load(key, def) { try { return JSON.parse(localStorage.getItem(key)) || def; } catch { return def; } }
+function save(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
+
+function loadRaw() { return load(STORE.RAW, []); }
+function loadPriorityAll() { return load(STORE.PRIORITY, {}); }
+function loadPriority(year) {
+  const all = loadPriorityAll();
+  const y = String(year);
+  // 새 형식: { "2025": { "LOJ": 1, ... }, "2026": { ... } }
+  if (all[y] && typeof all[y] === 'object') return all[y];
+  // 옛 형식 호환: { "LOJ": 1, "GOA": 2, ... } (연도 구분 없음)
+  const hasOldFormat = Object.values(all).some(v => typeof v === 'number');
+  if (hasOldFormat) return all;
+  // fallback
+  return {};
+}
+function loadTargets() { return load(STORE.TARGETS, { 2024: 80, 2025: 85, 2026: 85 }); }
+function loadTargetsQR() { return load(STORE.TARGETS_QR, { 2024: 80, 2025: 85, 2026: 85 }); }
+function loadHistory() { return load(STORE.HISTORY, []); }
+
+// ==================== TABS ====================
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('sec-' + tab.dataset.tab).classList.add('active');
+    refresh();
+  });
+});
+
+// ==================== FILE UPLOAD ====================
+const uploadArea = document.getElementById('uploadArea');
+const fileInput = document.getElementById('fileInput');
+
+uploadArea.addEventListener('click', () => fileInput.click());
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+uploadArea.addEventListener('drop', e => { e.preventDefault(); uploadArea.classList.remove('dragover'); handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+function handleFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+
+      // Parse Raw data sheet
+      const rawSheet = wb.Sheets['Raw data'] || wb.Sheets['raw data'] || wb.Sheets['RawData'];
+      if (!rawSheet) { alert('"Raw data" 시트를 찾을 수 없습니다.'); return; }
+      const rawJson = XLSX.utils.sheet_to_json(rawSheet, { header: 'A', defval: '' });
+
+      // Parse header row to find columns
+      const header = rawJson[0];
+      const rawData = [];
+      for (let i = 1; i < rawJson.length; i++) {
+        const r = rawJson[i];
+        if (!r.A || !r.B) continue;
+        rawData.push({
+          customer: String(r.A).trim(),
+          year: parseInt(r.B) || 0,
+          month: parseInt(r.C) || 0,
+          poNumber: String(r.D || ''),
+          poDetail: String(r.E || ''),
+          salesDoc: String(r.F || ''),
+          item: String(r.G || ''),
+          productCode: String(r.H || ''),
+          productName: String(r.I || ''),
+          orderQty: parseFloat(r.J) || 0,
+          deliveredQty: parseFloat(r.K) || 0,
+          orderDate: r.L,
+          origDeliveryDate: r.M,
+          origPlus30: r.N,
+          materialInDate: r.O,
+          prodCompleteDate: r.P,
+          finalDeliveryDate: r.Q,
+          leadTime: parseFloat(r.R) || 0,
+          matLeadTime: parseFloat(r.S) || 0,
+          compliance: String(r.T || '').trim(),
+          delayOwner: String(r.U || '').trim(),
+          delayDetail: String(r.V || '').trim()
+        });
+      }
+
+      // Parse priority sheet (연도별) - 셀 주소 직접 참조
+      const prioSheet = wb.Sheets['우선순위'];
+      const parsedPriority = {};
+      if (prioSheet) {
+        const prio2025 = {}, prio2026 = {};
+        for (let row = 2; row <= 21; row++) {
+          const gCell = prioSheet['G' + row];
+          const hCell = prioSheet['H' + row];
+          const iCell = prioSheet['I' + row];
+          const rank = gCell ? parseInt(gCell.v) : 0;
+          if (!rank || rank > 20) continue;
+          const cust25 = hCell ? String(hCell.v).trim() : '';
+          const cust26 = iCell ? String(iCell.v).trim() : '';
+          if (cust25) prio2025[cust25] = rank;
+          if (cust26) prio2026[cust26] = rank;
+        }
+        parsedPriority['2025'] = prio2025;
+        parsedPriority['2026'] = prio2026;
+      }
+
+      // Parse targets sheet
+      const targetSheet = wb.Sheets['납기준수율목표'];
+      if (targetSheet) {
+        const targetJson = XLSX.utils.sheet_to_json(targetSheet, { header: 'A', defval: '' });
+        const targets = loadTargets();
+        for (let i = 1; i < targetJson.length; i++) {
+          const r = targetJson[i];
+          if (r.A && r.B) targets[parseInt(r.A)] = Math.round(parseFloat(r.B) * (parseFloat(r.B) <= 1 ? 100 : 1));
+        }
+        save(STORE.TARGETS, targets);
+      }
+
+      // Save
+      save(STORE.RAW, rawData);
+      // 기존 우선순위 완전 삭제 후 새로 저장
+      localStorage.removeItem(STORE.PRIORITY);
+      save(STORE.PRIORITY, parsedPriority);
+
+      // Upload history
+      const history = loadHistory();
+      history.unshift({ fileName: file.name, date: new Date().toISOString(), count: rawData.length });
+      if (history.length > 10) history.length = 10;
+      save(STORE.HISTORY, history);
+
+      const p25_5 = Object.entries(parsedPriority['2025']||{}).find(([k,v])=>v===5);
+      const p26_5 = Object.entries(parsedPriority['2026']||{}).find(([k,v])=>v===5);
+      alert(`업로드 완료!\n- Raw data: ${rawData.length}건\n- 고객사: ${[...new Set(rawData.map(d=>d.customer))].length}개\n- 25년 5위: ${p25_5?p25_5[0]:'N/A'} / 26년 5위: ${p26_5?p26_5[0]:'N/A'}`);
+      refreshDropdowns();
+      refresh();
+    } catch (err) {
+      alert('파일 처리 중 오류: ' + err.message);
+      console.error(err);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ==================== AGGREGATION ====================
+function aggregate(data) {
+  // Group by customer + year + month
+  const map = {};
+  data.forEach(d => {
+    const key = `${d.customer}|${d.year}|${d.month}`;
+    if (!map[key]) map[key] = { customer: d.customer, year: d.year, month: d.month, total: 0, onTime: 0, orderQty: 0, deliveredQty: 0, delayed: 0, delayReasons: {} };
+    map[key].total++;
+    if (d.compliance === '준수') map[key].onTime++;
+    else {
+      map[key].delayed++;
+      const reason = d.delayOwner || '미분류';
+      map[key].delayReasons[reason] = (map[key].delayReasons[reason] || 0) + 1;
+    }
+    map[key].orderQty += d.orderQty;
+    map[key].deliveredQty += d.deliveredQty;
+  });
+  return Object.values(map);
+}
+
+function getCustomers(data, year) {
+  const priority = year ? loadPriority(year) : loadPriority(new Date().getFullYear());
+  const custs = [...new Set(data.map(d => d.customer))];
+  return custs.sort((a, b) => (priority[a] || 99) - (priority[b] || 99));
+}
+
+function getYears(data) { return [...new Set(data.map(d => d.year))].sort(); }
+function getMonths(data, year) { return [...new Set(data.filter(d => d.year === year).map(d => d.month))].sort((a,b) => a-b); }
+
+// ==================== DROPDOWNS ====================
+function toggleAllMonths(checked) {
+  document.querySelectorAll('.month-cb').forEach(cb => cb.checked = checked);
+  renderDashboard();
+}
+
+function updateCustomerDropdownForYear(id, year, includeAll) {
+  const raw = loadRaw();
+  const priority = loadPriority(year);
+  const customers = getCustomers(raw, year);
+  const groupOptions = '<option value="TOP10">상위 1-10위</option><option value="BOTTOM">하위 11-20위</option>';
+  const el = document.getElementById(id);
+  const prev = el.value;
+  el.innerHTML = (includeAll ? '<option value="ALL">전체</option>' : '') +
+    groupOptions +
+    '<option disabled>──────────</option>' +
+    customers.map(c => {
+      const p = priority[c];
+      return `<option value="${c}">${c}${p ? ' (' + p + '위)' : ''}</option>`;
+    }).join('');
+  if (prev && [...el.options].some(o => o.value === prev)) el.value = prev;
+}
+
+function refreshDropdowns() {
+  const raw = loadRaw();
+  const years = getYears(raw);
+  const currentYear = years.length > 0 ? Math.max(...years) : new Date().getFullYear();
+
+  ['filterYear','custFilterYear','delayFilterYear'].forEach(id => {
+    const el = document.getElementById(id);
+    el.innerHTML = years.map(y => `<option value="${y}" ${y===currentYear?'selected':''}>${y}년</option>`).join('');
+  });
+
+  updateCustomerDropdownForYear('filterCustomer', currentYear, true);
+  updateCustomerDropdownForYear('custFilterCustomer', currentYear, false);
+
+  // Month checkboxes for dashboard
+  const mf = document.getElementById('monthFilter');
+  const existingCbs = mf.querySelectorAll('.month-cb');
+  if (existingCbs.length === 0) {
+    MONTHS.forEach(m => {
+      mf.insertAdjacentHTML('beforeend',
+        `<input type="checkbox" class="month-cb" id="mCb${m}" value="${m}" checked onchange="renderDashboard()"><label class="month-label" for="mCb${m}">${m}월</label>`
+      );
+    });
+  }
+
+  // Delay filter stays as select
+  const delayEl = document.getElementById('delayFilterMonth');
+  delayEl.innerHTML = '<option value="ALL">전체</option>' + MONTHS.map(m => `<option value="${m}">${m}월</option>`).join('');
+
+  // Update header stats
+  const custs = [...new Set(raw.map(d => d.customer))];
+  document.getElementById('dataStats').textContent = `총 ${raw.length.toLocaleString()}건 | ${custs.length}개 고객사`;
+
+  const hist = loadHistory();
+  if (hist.length > 0) {
+    document.getElementById('lastUpdate').textContent = '최종 업로드: ' + new Date(hist[0].date).toLocaleString('ko-KR');
+  }
+}
+
+// ==================== COLORS ====================
+const COLORS = ['#1a237e','#c62828','#2e7d32','#f57f17','#6a1b9a','#00838f','#e65100','#1b5e20','#4a148c','#004d40','#bf360c','#0d47a1','#880e4f','#33691e','#ff6f00','#311b92','#1b5e20','#b71c1c','#01579b','#4e342e'];
+function getColor(i) { return COLORS[i % COLORS.length]; }
+
+const MONTHS = [1,2,3,4,5,6,7,8,9,10,11,12];
+const MONTH_LABELS = MONTHS.map(m => m + '월');
+
+// ==================== RATE HELPERS ====================
+function rateClass(v, target, type) {
+  if (v >= target) return type === 'qr' ? 'rate-good-qr' : 'rate-good';
+  return 'rate-bad';
+}
+function kpiClass(v, target) {
+  return v >= target ? 'kpi-good' : 'kpi-bad';
+}
+function fmtRate(v) { return v !== null && !isNaN(v) ? v.toFixed(1) + '%' : '-'; }
+function trendHtml(curr, prev, type) {
+  if (curr === null || prev === null) return '';
+  const diff = curr - prev;
+  if (Math.abs(diff) < 0.1) return `<span class="trend-flat">${diff.toFixed(1)}%p</span>`;
+  const upClass = type === 'qr' ? 'trend-up-qr' : 'trend-up';
+  return diff > 0 ? `<span class="${upClass}">+${diff.toFixed(1)}%p</span>` : `<span class="trend-down">${diff.toFixed(1)}%p</span>`;
+}
+
+// ==================== CHART MANAGEMENT ====================
+// 데이터 레이블 플러그인 (인라인 구현)
+const dataLabelPlugin = {
+  id: 'customDataLabels',
+  afterDatasetsDraw(chart) {
+    const { ctx } = chart;
+    chart.data.datasets.forEach((dataset, i) => {
+      if (dataset.label && dataset.label.startsWith('목표')) return;
+      const meta = chart.getDatasetMeta(i);
+      if (!meta.visible) return;
+      const color = dataset._labelColor || dataset.borderColor || '#333';
+      ctx.save();
+      ctx.font = '600 11px "Segoe UI", "Malgun Gothic", sans-serif';
+      ctx.fillStyle = color;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      meta.data.forEach((el, idx) => {
+        const val = dataset.data[idx];
+        if (val === null || val === undefined) return;
+        ctx.fillText(val.toFixed(1) + '%', el.x, el.y - 6);
+      });
+      ctx.restore();
+    });
+  }
+};
+
+let charts = {};
+function destroyCharts() { Object.values(charts).forEach(c => { try { c.destroy(); } catch {} }); charts = {}; }
+
+// ==================== RENDER: DASHBOARD ====================
+function renderDashboard() {
+  destroyCharts();
+  const raw = loadRaw();
+  const year = +document.getElementById('filterYear').value;
+  const selectedMonths = [...document.querySelectorAll('.month-cb:checked')].map(cb => +cb.value);
+  const custFilter = document.getElementById('filterCustomer').value;
+  const targets = loadTargets();
+  const targetsQR = loadTargetsQR();
+  const targetDR = targets[year] || 85;
+  const targetQR = targetsQR[year] || 85;
+  const priority = loadPriority(year);
+
+  // 고객사 그룹 필터 처리
+  function getFilteredCustomers(filter) {
+    const allCusts = getCustomers(raw, year);
+    if (filter === 'ALL') return allCusts;
+    if (filter === 'TOP10') return allCusts.filter(c => (priority[c] || 99) <= 10);
+    if (filter === 'BOTTOM') return allCusts.filter(c => (priority[c] || 99) >= 11);
+    return [filter];
+  }
+  const selectedCusts = getFilteredCustomers(custFilter);
+
+  let filtered = raw.filter(d => d.year === year && selectedMonths.includes(d.month) && selectedCusts.includes(d.customer));
+
+  const customers = selectedCusts.filter(c => filtered.some(d => d.customer === c));
+  const agg = aggregate(filtered);
+
+  // KPI
+  const totalItems = filtered.length;
+  const onTimeItems = filtered.filter(d => d.compliance === '준수').length;
+  const totalOrderQty = filtered.reduce((s, d) => s + d.orderQty, 0);
+  const totalDeliveredQty = filtered.reduce((s, d) => s + d.deliveredQty, 0);
+  const dr = totalItems > 0 ? (onTimeItems / totalItems * 100) : 0;
+  const qr = totalOrderQty > 0 ? (totalDeliveredQty / totalOrderQty * 100) : 0;
+  const delayedItems = totalItems - onTimeItems;
+  const monthsWithData = [...new Set(filtered.map(d => d.month))].length;
+
+  document.getElementById('kpiRow').innerHTML = `
+    <div class="kpi-card"><div class="label">납기준수율</div><div class="value ${kpiClass(dr, targetDR)}">${fmtRate(dr)}</div><div class="sub">목표: ${targetDR}% | 준수 ${onTimeItems}건 / 전체 ${totalItems}건</div></div>
+    <div class="kpi-card"><div class="label">수량완납율</div><div class="value ${kpiClass(qr, targetQR)}">${fmtRate(qr)}</div><div class="sub">목표: ${targetQR}% | 납품 ${totalDeliveredQty.toLocaleString()} / 발주 ${totalOrderQty.toLocaleString()}</div></div>
+    <div class="kpi-card"><div class="label">미준수 건수</div><div class="value ${delayedItems > 0 ? 'kpi-bad' : 'kpi-good'}">${delayedItems}</div><div class="sub">전체 ${totalItems}건 중</div></div>
+    <div class="kpi-card"><div class="label">고객사 수</div><div class="value">${customers.length}</div><div class="sub">데이터 입력 완료</div></div>
+    <div class="kpi-card"><div class="label">데이터 월수</div><div class="value">${monthsWithData} / 12</div><div class="sub">${year}년</div></div>
+  `;
+
+  // Monthly trend charts
+  const chartMonths = selectedMonths.length > 0 ? [...selectedMonths].sort((a,b) => a-b) : MONTHS;
+  const chartLabels = chartMonths.map(m => m + '월');
+
+  const monthlyByCustomer = (custList) => chartMonths.map(m => {
+    const md = raw.filter(d => d.year === year && d.month === m && custList.includes(d.customer));
+    if (md.length === 0) return { dr: null, qr: null };
+    const tot = md.length;
+    const ot = md.filter(d => d.compliance === '준수').length;
+    const oq = md.reduce((s, d) => s + d.orderQty, 0);
+    const dq = md.reduce((s, d) => s + d.deliveredQty, 0);
+    return { dr: ot / tot * 100, qr: oq > 0 ? dq / oq * 100 : null };
+  });
+
+  const isFewMonths = chartMonths.length <= 3;
+  const chartType = isFewMonths ? 'bar' : 'line';
+
+  // Delivery rate chart
+  const avgDrMonthly = monthlyByCustomer(customers);
+  const drDatasets = [
+    { label: custFilter === 'ALL' ? '전체 고객사 평균' : custFilter, data: avgDrMonthly.map(m => m.dr), borderColor: '#1a237e', backgroundColor: '#1a237e' + (isFewMonths ? 'cc' : '22'), tension: 0.3, fill: !isFewMonths, spanGaps: true, pointRadius: isFewMonths ? 0 : 6, pointBackgroundColor: '#1a237e', borderWidth: 3, borderRadius: isFewMonths ? 6 : 0 },
+    { label: `목표 (${targetDR}%)`, data: Array(chartMonths.length).fill(targetDR), type: 'line', borderColor: '#ff0000', borderWidth: 1.5, borderDash: [4,4], pointRadius: 0 }
+  ];
+
+  drDatasets[0]._labelColor = '#1a237e';
+  charts.delivery = new Chart(document.getElementById('chartDelivery'), {
+    type: chartType, data: { labels: chartLabels, datasets: drDatasets },
+    plugins: [dataLabelPlugin],
+    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } }, tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + (ctx.parsed.y !== null ? ctx.parsed.y.toFixed(1) + '%' : '-') } } }, scales: { y: { min: 50, max: 110, ticks: { callback: v => v+'%' } } } }
+  });
+
+  // Quantity rate chart
+  const avgQrMonthly = monthlyByCustomer(customers);
+  const qrDatasets = [
+    { label: custFilter === 'ALL' ? '전체 고객사 평균' : custFilter, data: avgQrMonthly.map(m => m.qr), borderColor: '#2e7d32', backgroundColor: '#2e7d32' + (isFewMonths ? 'cc' : '22'), tension: 0.3, fill: !isFewMonths, spanGaps: true, pointRadius: isFewMonths ? 0 : 6, pointBackgroundColor: '#2e7d32', borderWidth: 3, borderRadius: isFewMonths ? 6 : 0 },
+    { label: `목표 (${targetQR}%)`, data: Array(chartMonths.length).fill(targetQR), type: 'line', borderColor: '#ff0000', borderWidth: 1.5, borderDash: [4,4], pointRadius: 0 }
+  ];
+
+  qrDatasets[0]._labelColor = '#2e7d32';
+  charts.quantity = new Chart(document.getElementById('chartQuantity'), {
+    type: chartType, data: { labels: chartLabels, datasets: qrDatasets },
+    plugins: [dataLabelPlugin],
+    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } }, tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + (ctx.parsed.y !== null ? ctx.parsed.y.toFixed(1) + '%' : '-') } } }, scales: { y: { min: 50, max: 110, ticks: { callback: v => v+'%' } } } }
+  });
+
+  // Customer comparison bar charts (월 + 고객사 필터 반영)
+  const custBarData = raw.filter(d => d.year === year && selectedMonths.includes(d.month));
+  const allCusts = customers.filter(c => custBarData.some(d => d.customer === c));
+  const selectedMonthLabel = selectedMonths.length === 12 ? '연간 누적' : selectedMonths.map(m => m + '월').join(', ');
+  const custAgg = allCusts.map(c => {
+    const cd = custBarData.filter(d => d.customer === c);
+    const tot = cd.length; const ot = cd.filter(d => d.compliance === '준수').length;
+    const oq = cd.reduce((s, d) => s + d.orderQty, 0); const dq = cd.reduce((s, d) => s + d.deliveredQty, 0);
+    return { customer: c, dr: tot > 0 ? ot / tot * 100 : 0, qr: oq > 0 ? dq / oq * 100 : 0, total: tot, priority: priority[c] || 99 };
+  });
+
+  document.getElementById('custDeliveryTitle').textContent = `고객사별 납기준수율 비교 (${selectedMonthLabel})`;
+  document.getElementById('custQuantityTitle').textContent = `고객사별 수량완납율 비교 (${selectedMonthLabel})`;
+
+  charts.custDelivery = new Chart(document.getElementById('chartCustDelivery'), {
+    type: 'bar', data: {
+      labels: custAgg.map(c => c.customer),
+      datasets: [
+        { label: '납기준수율', data: custAgg.map(c => c.dr), backgroundColor: custAgg.map(c => c.dr >= targetDR ? '#1a237ecc' : '#9fa8dacc'), borderRadius: 4 },
+        { label: `목표 (${targetDR}%)`, data: custAgg.map(() => targetDR), type: 'line', borderColor: '#ff0000', borderDash: [4,4], pointRadius: 0, borderWidth: 2 }
+      ]
+    },
+    plugins: [dataLabelPlugin],
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 110, ticks: { callback: v => v+'%' } } } }
+  });
+
+  charts.custQuantity = new Chart(document.getElementById('chartCustQuantity'), {
+    type: 'bar', data: {
+      labels: custAgg.map(c => c.customer),
+      datasets: [
+        { label: '수량완납율', data: custAgg.map(c => c.qr), backgroundColor: custAgg.map(c => c.qr >= targetQR ? '#2e7d32cc' : '#a5d6a7cc'), borderRadius: 4 },
+        { label: `목표 (${targetQR}%)`, data: custAgg.map(() => targetQR), type: 'line', borderColor: '#ff0000', borderDash: [4,4], pointRadius: 0, borderWidth: 2 }
+      ]
+    },
+    plugins: [dataLabelPlugin],
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 110, ticks: { callback: v => v+'%' } } } }
+  });
+
+  // Summary tables
+  renderSummaryTable('summaryDeliveryTable', year, allCusts, raw, targetDR, 'delivery', selectedMonths);
+  renderSummaryTable('summaryQuantityTable', year, allCusts, raw, targetQR, 'quantity', selectedMonths);
+}
+
+function renderSummaryTable(tableId, year, customers, raw, target, type, filterMonths) {
+  const priority = loadPriority(year);
+  const months = filterMonths && filterMonths.length > 0 ? [...filterMonths].sort((a,b) => a-b) : getMonths(raw, year);
+  const table = document.getElementById(tableId);
+  if (customers.length === 0) { table.innerHTML = '<tr><td style="padding:20px;color:#999;">데이터를 업로드해주세요.</td></tr>'; return; }
+
+  let html = '<thead><tr><th>순위</th><th>고객사</th>';
+  months.forEach(m => html += `<th>${m}월</th>`);
+  html += '<th style="background:#e8eaf6;">누적</th></tr></thead><tbody>';
+
+  customers.forEach(c => {
+    const p = priority[c];
+    html += `<tr><td>${p || '-'}</td><td style="text-align:left; font-weight:600;">${c}</td>`;
+    let cumTot = 0, cumOk = 0, cumOQ = 0, cumDQ = 0;
+    months.forEach(m => {
+      const md = raw.filter(d => d.year === year && d.month === m && d.customer === c);
+      if (md.length === 0) { html += '<td style="color:#ddd;">-</td>'; return; }
+      const tot = md.length; const ot = md.filter(d => d.compliance === '준수').length;
+      const oq = md.reduce((s, d) => s + d.orderQty, 0); const dq = md.reduce((s, d) => s + d.deliveredQty, 0);
+      cumTot += tot; cumOk += ot; cumOQ += oq; cumDQ += dq;
+      const val = type === 'delivery' ? (ot / tot * 100) : (oq > 0 ? dq / oq * 100 : 0);
+      html += `<td class="${rateClass(val, target, type === 'quantity' ? 'qr' : '')}">${val.toFixed(1)}%</td>`;
+    });
+    const cumVal = type === 'delivery' ? (cumTot > 0 ? cumOk / cumTot * 100 : 0) : (cumOQ > 0 ? cumDQ / cumOQ * 100 : 0);
+    html += `<td class="${rateClass(cumVal, target, type === 'quantity' ? 'qr' : '')}" style="font-weight:700; background:#f5f6fa;">${cumTot > 0 || cumOQ > 0 ? cumVal.toFixed(1) + '%' : '-'}</td></tr>`;
+  });
+
+  // Total row
+  html += '<tr style="background:#e8eaf6; font-weight:700;"><td></td><td style="text-align:left;">전체</td>';
+  let gTot = 0, gOk = 0, gOQ = 0, gDQ = 0;
+  months.forEach(m => {
+    const md = raw.filter(d => d.year === year && d.month === m && customers.includes(d.customer));
+    if (md.length === 0) { html += '<td>-</td>'; return; }
+    const tot = md.length; const ot = md.filter(d => d.compliance === '준수').length;
+    const oq = md.reduce((s, d) => s + d.orderQty, 0); const dq = md.reduce((s, d) => s + d.deliveredQty, 0);
+    gTot += tot; gOk += ot; gOQ += oq; gDQ += dq;
+    const val = type === 'delivery' ? (ot / tot * 100) : (oq > 0 ? dq / oq * 100 : 0);
+    html += `<td class="${rateClass(val, target, type === 'quantity' ? 'qr' : '')}">${val.toFixed(1)}%</td>`;
+  });
+  const gVal = type === 'delivery' ? (gTot > 0 ? gOk / gTot * 100 : 0) : (gOQ > 0 ? gDQ / gOQ * 100 : 0);
+  html += `<td class="${rateClass(gVal, target, type === 'quantity' ? 'qr' : '')}" style="background:#dde1f0;">${gVal.toFixed(1)}%</td></tr>`;
+
+  html += '</tbody>';
+  table.innerHTML = html;
+}
+
+// ==================== RENDER: CUSTOMER DETAIL ====================
+function renderCustomerDetail() {
+  destroyCharts();
+  const raw = loadRaw();
+  const year = +document.getElementById('custFilterYear').value;
+  const cust = document.getElementById('custFilterCustomer').value;
+  if (!cust) return;
+  const targets = loadTargets();
+  const targetsQR = loadTargetsQR();
+  const targetDR = targets[year] || 85;
+  const targetQR = targetsQR[year] || 85;
+  const priority = loadPriority(year);
+
+  // 그룹 필터 처리
+  let custLabel = cust;
+  let custList = [cust];
+  if (cust === 'TOP10') {
+    custList = getCustomers(raw, year).filter(c => (priority[c] || 99) <= 10);
+    custLabel = '상위 1-10위';
+  } else if (cust === 'BOTTOM') {
+    custList = getCustomers(raw, year).filter(c => (priority[c] || 99) >= 11);
+    custLabel = '하위 11-20위';
+  }
+
+  const custData = raw.filter(d => d.year === year && custList.includes(d.customer));
+  const months = getMonths(raw, year);
+  const isGroup = cust === 'TOP10' || cust === 'BOTTOM';
+
+  // KPI
+  const tot = custData.length; const ot = custData.filter(d => d.compliance === '준수').length;
+  const oq = custData.reduce((s, d) => s + d.orderQty, 0); const dq = custData.reduce((s, d) => s + d.deliveredQty, 0);
+  const dr = tot > 0 ? ot / tot * 100 : 0;
+  const qr = oq > 0 ? dq / oq * 100 : 0;
+
+  const prioDisplay = cust === 'TOP10' ? '1-10위' : cust === 'BOTTOM' ? '11-20위' : (priority[cust] || '-');
+
+  document.getElementById('custKpiRow').innerHTML = `
+    <div class="kpi-card"><div class="label">납기준수율</div><div class="value ${kpiClass(dr, targetDR)}">${fmtRate(dr)}</div><div class="sub">목표: ${targetDR}% | 준수 ${ot} / 전체 ${tot}건</div></div>
+    <div class="kpi-card"><div class="label">수량완납율</div><div class="value ${kpiClass(qr, targetQR)}">${fmtRate(qr)}</div><div class="sub">목표: ${targetQR}% | 납품 ${dq.toLocaleString()} / 발주 ${oq.toLocaleString()}</div></div>
+    <div class="kpi-card"><div class="label">미준수 건수</div><div class="value kpi-bad">${tot - ot}</div><div class="sub">전체 ${tot}건 중</div></div>
+    <div class="kpi-card"><div class="label">우선순위</div><div class="value">${prioDisplay}</div><div class="sub">${custLabel} (${custList.length}개사)</div></div>
+  `;
+
+  // Monthly charts
+  const monthlyData = MONTHS.map(m => {
+    const md = custData.filter(d => d.month === m);
+    if (md.length === 0) return { dr: null, qr: null };
+    const t = md.length; const o = md.filter(d => d.compliance === '준수').length;
+    const mOQ = md.reduce((s, d) => s + d.orderQty, 0); const mDQ = md.reduce((s, d) => s + d.deliveredQty, 0);
+    return { dr: o / t * 100, qr: mOQ > 0 ? mDQ / mOQ * 100 : null };
+  });
+
+  charts.custDr = new Chart(document.getElementById('custChartDelivery'), {
+    type: 'line', data: { labels: MONTH_LABELS, datasets: [
+      { label: '납기준수율', data: monthlyData.map(m => m.dr), borderColor: '#1a237e', backgroundColor: '#1a237e22', tension: 0.3, fill: true, spanGaps: true, pointRadius: 6, borderWidth: 3, _labelColor: '#1a237e' },
+      { label: `목표 (${targetDR}%)`, data: Array(12).fill(targetDR), borderColor: '#ff0000', borderWidth: 1.5, borderDash: [4,4], pointRadius: 0 }
+    ] },
+    plugins: [dataLabelPlugin],
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { min: 50, max: 110, ticks: { callback: v => v+'%' } } } }
+  });
+
+  charts.custQr = new Chart(document.getElementById('custChartQuantity'), {
+    type: 'line', data: { labels: MONTH_LABELS, datasets: [
+      { label: '수량완납율', data: monthlyData.map(m => m.qr), borderColor: '#2e7d32', backgroundColor: '#2e7d3222', tension: 0.3, fill: true, spanGaps: true, pointRadius: 6, borderWidth: 3, _labelColor: '#2e7d32' },
+      { label: `목표 (${targetQR}%)`, data: Array(12).fill(targetQR), borderColor: '#ff0000', borderWidth: 1.5, borderDash: [4,4], pointRadius: 0 }
+    ] },
+    plugins: [dataLabelPlugin],
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { min: 50, max: 110, ticks: { callback: v => v+'%' } } } }
+  });
+
+  // Monthly detail table
+  const dt = document.getElementById('custDetailTable');
+  const commentCols = isGroup ? '<th>납기 요인</th><th>완납 요인</th>' : '';
+  let html = `<thead><tr><th>월</th><th>총건수</th><th>준수</th><th>미준수</th><th>납기준수율</th><th>전월 대비</th>${isGroup ? '<th>납기 요인</th>' : ''}<th>발주수량</th><th>납품수량</th><th>수량완납율</th><th>전월 대비</th>${isGroup ? '<th>완납 요인</th>' : ''}</tr></thead><tbody>`;
+  let prevDr = null, prevQr = null, prevCustRates = null;
+  months.forEach(m => {
+    const md = custData.filter(d => d.month === m);
+    const t = md.length; const o = md.filter(d => d.compliance === '준수').length;
+    const mOQ = md.reduce((s, d) => s + d.orderQty, 0); const mDQ = md.reduce((s, d) => s + d.deliveredQty, 0);
+    const drVal = t > 0 ? o / t * 100 : 0; const qrVal = mOQ > 0 ? mDQ / mOQ * 100 : 0;
+
+    // 그룹 선택 시 요인 분석
+    let comment = { dr: '', qr: '' };
+    if (isGroup) {
+      const currCustRates = {};
+      custList.forEach(c => {
+        const cd = md.filter(d => d.customer === c);
+        const cTot = cd.length; const cOt = cd.filter(d => d.compliance === '준수').length;
+        const cOQ = cd.reduce((s, d) => s + d.orderQty, 0); const cDQ = cd.reduce((s, d) => s + d.deliveredQty, 0);
+        currCustRates[c] = { dr: cTot > 0 ? cOt / cTot * 100 : null, qr: cOQ > 0 ? cDQ / cOQ * 100 : null };
+      });
+      if (prevCustRates) {
+        const drChanges = [], qrChanges = [];
+        custList.forEach(c => {
+          const curr = currCustRates[c], prev = prevCustRates[c];
+          if (curr && prev && curr.dr !== null && prev.dr !== null) {
+            const diff = curr.dr - prev.dr;
+            if (Math.abs(diff) >= 1) drChanges.push({ c, diff });
+          }
+          if (curr && prev && curr.qr !== null && prev.qr !== null) {
+            const diff = curr.qr - prev.qr;
+            if (Math.abs(diff) >= 1) qrChanges.push({ c, diff });
+          }
+        });
+        drChanges.sort((a, b) => a.diff - b.diff);
+        qrChanges.sort((a, b) => a.diff - b.diff);
+        const parts = [];
+        // 납기준수율 주요 변동
+        const drDown = drChanges.filter(x => x.diff < -1).slice(0, 3);
+        const drUp = drChanges.filter(x => x.diff > 1).sort((a,b) => b.diff - a.diff).slice(0, 3);
+        const qrDown = qrChanges.filter(x => x.diff < -1).slice(0, 3);
+        const qrUp = qrChanges.filter(x => x.diff > 1).sort((a,b) => b.diff - a.diff).slice(0, 3);
+        // 간략 표시 (top 1) + 툴팁 (전체), 전월대비 방향에 맞춰 순서 결정
+        function buildFactorCell(downs, ups, downColor, upColor, overallDiff) {
+          if (downs.length === 0 && ups.length === 0) return '';
+          // 전월대비 하락이면 하락요인 먼저, 상승이면 상승요인 먼저
+          const isDown = overallDiff < 0;
+          const top1 = isDown ? (downs[0] || ups[0]) : (ups[0] || downs[0]);
+          const brief = top1.diff < 0
+            ? '<span style="color:' + downColor + ';">↓' + top1.c + ' ' + top1.diff.toFixed(1) + '%p</span>'
+            : '<span style="color:' + upColor + ';">↑' + top1.c + ' +' + top1.diff.toFixed(1) + '%p</span>';
+          // 툴팁도 동일 순서
+          const allItems = [];
+          if (isDown) {
+            downs.forEach(x => allItems.push('↓ ' + x.c + ' (' + x.diff.toFixed(1) + '%p)'));
+            ups.forEach(x => allItems.push('↑ ' + x.c + ' (+' + x.diff.toFixed(1) + '%p)'));
+          } else {
+            ups.forEach(x => allItems.push('↑ ' + x.c + ' (+' + x.diff.toFixed(1) + '%p)'));
+            downs.forEach(x => allItems.push('↓ ' + x.c + ' (' + x.diff.toFixed(1) + '%p)'));
+          }
+          const tooltip = allItems.join('&#10;');
+          const extra = (downs.length + ups.length) > 1 ? ' <span style="color:#888; font-size:10px;">+' + (downs.length + ups.length - 1) + '</span>' : '';
+          return '<span title="' + tooltip + '" style="cursor:help;">' + brief + extra + '</span>';
+        }
+        const drOverall = prevDr !== null ? drVal - prevDr : 0;
+        const qrOverall = prevQr !== null ? qrVal - prevQr : 0;
+        comment.dr = buildFactorCell(drDown, drUp, '#c62828', '#1a237e', drOverall);
+        comment.qr = buildFactorCell(qrDown, qrUp, '#c62828', '#2e7d32', qrOverall);
+      }
+      prevCustRates = currCustRates;
+    }
+
+    html += `<tr><td>${m}월</td><td>${t}</td><td>${o}</td><td>${t-o}</td><td class="${rateClass(drVal, targetDR)}">${fmtRate(drVal)}</td>
+      <td>${trendHtml(drVal, prevDr)}</td>
+      ${isGroup ? '<td style="font-size:11px; white-space:nowrap;">' + comment.dr + '</td>' : ''}
+      <td>${mOQ.toLocaleString()}</td><td>${mDQ.toLocaleString()}</td><td class="${rateClass(qrVal, targetQR, 'qr')}">${fmtRate(qrVal)}</td>
+      <td>${trendHtml(qrVal, prevQr, 'qr')}</td>
+      ${isGroup ? '<td style="font-size:11px; white-space:nowrap;">' + comment.qr + '</td>' : ''}</tr>`;
+    prevDr = drVal; prevQr = qrVal;
+  });
+  html += '</tbody>';
+  dt.innerHTML = html;
+
+  // Raw data table with filters
+  window._rawCustData = custData;
+  window._rawIsGroup = isGroup;
+
+  // Build filter options
+  const rawFilterBar = document.getElementById('rawFilterBar');
+  const rawMonths = [...new Set(custData.map(d => d.month))].sort((a,b) => a-b);
+  const rawCompliance = [...new Set(custData.map(d => d.compliance))].sort();
+  const rawDelayOwners = [...new Set(custData.map(d => d.delayOwner).filter(x => x))].sort();
+  const rawCustomers = isGroup ? [...new Set(custData.map(d => d.customer))].sort() : [];
+
+  let filterHtml = '';
+  if (isGroup) {
+    filterHtml += '<div class="form-group"><label>고객사</label><select id="rawFltCust" onchange="renderRawTable()"><option value="ALL">전체</option>' +
+      rawCustomers.map(c => `<option value="${c}">${c}</option>`).join('') + '</select></div>';
+  }
+  filterHtml += '<div class="form-group"><label>월</label><select id="rawFltMonth" onchange="renderRawTable()"><option value="ALL">전체</option>' +
+    rawMonths.map(m => `<option value="${m}">${m}월</option>`).join('') + '</select></div>';
+  filterHtml += '<div class="form-group"><label>준수여부</label><select id="rawFltComp" onchange="renderRawTable()"><option value="ALL">전체</option>' +
+    rawCompliance.map(c => `<option value="${c}">${c}</option>`).join('') + '</select></div>';
+  if (rawDelayOwners.length > 0) {
+    filterHtml += '<div class="form-group"><label>지연주체</label><select id="rawFltDelay" onchange="renderRawTable()"><option value="ALL">전체</option>' +
+      rawDelayOwners.map(d => `<option value="${d}">${d}</option>`).join('') + '</select></div>';
+  }
+  rawFilterBar.innerHTML = filterHtml;
+  rawFilterBar.style.display = 'flex';
+
+  renderRawTable();
+}
+
+function renderRawTable() {
+  let data = window._rawCustData || [];
+  const isGroup = window._rawIsGroup || false;
+
+  // Apply filters
+  const fltMonth = document.getElementById('rawFltMonth');
+  const fltComp = document.getElementById('rawFltComp');
+  const fltDelay = document.getElementById('rawFltDelay');
+  const fltCust = document.getElementById('rawFltCust');
+
+  if (fltCust && fltCust.value !== 'ALL') data = data.filter(d => d.customer === fltCust.value);
+  if (fltMonth && fltMonth.value !== 'ALL') data = data.filter(d => d.month === +fltMonth.value);
+  if (fltComp && fltComp.value !== 'ALL') data = data.filter(d => d.compliance === fltComp.value);
+  if (fltDelay && fltDelay.value !== 'ALL') data = data.filter(d => d.delayOwner === fltDelay.value);
+
+  document.getElementById('rawFilterCount').textContent = `${data.length}건 표시 / 전체 ${(window._rawCustData||[]).length}건`;
+
+  const rt = document.getElementById('custRawTable');
+  let html = '<thead><tr>' + (isGroup ? '<th>고객사</th>' : '') + '<th>월</th><th>PO번호</th><th>제품코드</th><th>제품명</th><th>발주수량</th><th>납품수량</th><th>준수여부</th><th>지연주체</th><th>출고LT</th><th>자재입고후LT</th></tr></thead><tbody>';
+  data.sort((a, b) => a.customer.localeCompare(b.customer) || a.month - b.month).forEach(d => {
+    html += `<tr>${isGroup ? '<td>'+d.customer+'</td>' : ''}<td>${d.month}월</td><td>${d.poNumber}</td><td>${d.productCode}</td><td style="text-align:left; max-width:200px; overflow:hidden; text-overflow:ellipsis;">${d.productName}</td>
+      <td>${d.orderQty.toLocaleString()}</td><td>${d.deliveredQty.toLocaleString()}</td>
+      <td><span class="badge ${d.compliance==='준수'?'badge-ok':'badge-ng'}">${d.compliance}</span></td>
+      <td>${d.delayOwner}</td><td>${d.leadTime}</td><td>${d.matLeadTime}</td></tr>`;
+  });
+  if (data.length === 0) html += '<tr><td colspan="11" style="padding:20px; color:#999; text-align:center;">조건에 맞는 데이터가 없습니다.</td></tr>';
+  html += '</tbody>';
+  rt.innerHTML = html;
+}
+
+// ==================== RENDER: DELAY ANALYSIS ====================
+function renderDelayAnalysis() {
+  destroyCharts();
+  const raw = loadRaw();
+  const year = +document.getElementById('delayFilterYear').value;
+  const monthFilter = document.getElementById('delayFilterMonth').value;
+
+  let delayed = raw.filter(d => d.year === year && d.compliance === '미준수');
+  const allDelayed = delayed; // 월 필터 전 전체 (추이 차트용)
+  if (monthFilter !== 'ALL') delayed = delayed.filter(d => d.month === +monthFilter);
+
+  // Monthly delay trend chart
+  const allYearData = raw.filter(d => d.year === year);
+  const trendData = MONTHS.map(m => {
+    const total = allYearData.filter(d => d.month === m);
+    const ng = allDelayed.filter(d => d.month === m);
+    return { month: m, total: total.length, ng: ng.length };
+  });
+  const hasData = trendData.some(t => t.total > 0);
+
+  const trendCountPlugin = {
+    id: 'trendCountLabels',
+    afterDatasetsDraw(chart) {
+      const { ctx } = chart;
+      chart.data.datasets.forEach((dataset, i) => {
+        const meta = chart.getDatasetMeta(i);
+        if (!meta.visible || dataset.label === '총 건수') return;
+        ctx.save();
+        ctx.font = '700 11px "Segoe UI", "Malgun Gothic", sans-serif';
+        ctx.fillStyle = '#c62828';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        meta.data.forEach((el, idx) => {
+          const val = dataset.data[idx];
+          if (val > 0) ctx.fillText(val + '건', el.x, el.y - 6);
+        });
+        ctx.restore();
+      });
+    }
+  };
+
+  charts.delayTrend = new Chart(document.getElementById('chartDelayTrend'), {
+    type: 'bar', data: {
+      labels: MONTH_LABELS,
+      datasets: [
+        { label: '총 건수', data: trendData.map(t => t.total), backgroundColor: '#e0e0e0', borderRadius: 4, order: 2 },
+        { label: '미준수 건수', data: trendData.map(t => t.ng), backgroundColor: '#ef5350cc', borderRadius: 4, order: 1 }
+      ]
+    },
+    plugins: [trendCountPlugin],
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, title: { display: true, text: '건수' } } } }
+  });
+
+  // Delay reason chart
+  const reasons = {};
+  delayed.forEach(d => { const r = d.delayOwner || '미분류'; reasons[r] = (reasons[r] || 0) + 1; });
+  const reasonLabels = Object.keys(reasons).sort((a, b) => reasons[b] - reasons[a]);
+
+  const totalDelayed = delayed.length;
+  const DOUGHNUT_COLORS = ['#5c6bc0','#ef5350','#66bb6a','#ffa726','#ab47bc','#26c6da','#ff7043','#78909c'];
+
+  // 도넛 차트 중앙에 총 건수 표시
+  const centerTextPlugin = {
+    id: 'centerText',
+    afterDraw(chart) {
+      const { ctx } = chart;
+      const centerX = (chart.chartArea.left + chart.chartArea.right) / 2;
+      const centerY = (chart.chartArea.top + chart.chartArea.bottom) / 2;
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '700 22px "Segoe UI", "Malgun Gothic", sans-serif';
+      ctx.fillStyle = '#333';
+      ctx.fillText(totalDelayed + '건', centerX, centerY - 8);
+      ctx.font = '400 12px "Segoe UI", "Malgun Gothic", sans-serif';
+      ctx.fillStyle = '#888';
+      ctx.fillText('총 미준수', centerX, centerY + 14);
+      ctx.restore();
+    }
+  };
+
+  charts.delayReason = new Chart(document.getElementById('chartDelayReason'), {
+    type: 'doughnut', data: {
+      labels: reasonLabels, datasets: [{ data: reasonLabels.map(r => reasons[r]), backgroundColor: reasonLabels.map((_, i) => DOUGHNUT_COLORS[i % DOUGHNUT_COLORS.length]) }]
+    },
+    plugins: [centerTextPlugin],
+    options: { responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.label + ': ' + ctx.parsed + '건 (' + (totalDelayed > 0 ? (ctx.parsed / totalDelayed * 100).toFixed(1) : 0) + '%)' } } } }
+  });
+
+  // 도넛 차트 아래 상세 테이블
+  const legendDiv = document.getElementById('delayReasonLegend');
+  if (legendDiv) {
+    let lhtml = '<table style="width:100%; margin-top:12px;"><thead><tr><th style="text-align:left;">지연 주체</th><th>건수</th><th>비율</th></tr></thead><tbody>';
+    reasonLabels.forEach((r, i) => {
+      const pct = totalDelayed > 0 ? (reasons[r] / totalDelayed * 100).toFixed(1) : 0;
+      lhtml += `<tr><td style="text-align:left;"><span style="display:inline-block;width:12px;height:12px;background:${DOUGHNUT_COLORS[i % DOUGHNUT_COLORS.length]};border-radius:2px;vertical-align:middle;margin-right:6px;"></span>${r}</td><td>${reasons[r]}건</td><td>${pct}%</td></tr>`;
+    });
+    lhtml += '</tbody></table>';
+    legendDiv.innerHTML = lhtml;
+  }
+
+  // Delay by customer chart
+  const custDelay = {};
+  delayed.forEach(d => { custDelay[d.customer] = (custDelay[d.customer] || 0) + 1; });
+  const custLabels = Object.keys(custDelay).sort((a, b) => custDelay[b] - custDelay[a]);
+
+  const countLabelPlugin = {
+    id: 'countLabels',
+    afterDatasetsDraw(chart) {
+      const { ctx } = chart;
+      const meta = chart.getDatasetMeta(0);
+      if (!meta.visible) return;
+      ctx.save();
+      ctx.font = '700 12px "Segoe UI", "Malgun Gothic", sans-serif';
+      ctx.fillStyle = '#fff';
+      ctx.textBaseline = 'middle';
+      meta.data.forEach((el, idx) => {
+        const val = chart.data.datasets[0].data[idx];
+        const barWidth = el.width || (el.x - chart.chartArea.left);
+        if (barWidth > 30) {
+          ctx.textAlign = 'right';
+          ctx.fillText(val + '건', el.x - 6, el.y);
+        } else {
+          ctx.textAlign = 'left';
+          ctx.fillStyle = '#333';
+          ctx.fillText(val + '건', el.x + 6, el.y);
+          ctx.fillStyle = '#fff';
+        }
+      });
+      ctx.restore();
+    }
+  };
+
+  charts.delayCustomer = new Chart(document.getElementById('chartDelayCustomer'), {
+    type: 'bar', data: {
+      labels: custLabels, datasets: [{ label: '미준수 건수', data: custLabels.map(c => custDelay[c]), backgroundColor: '#37474fcc', borderRadius: 4 }]
+    },
+    plugins: [countLabelPlugin],
+    options: { responsive: true, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } } } }
+  });
+
+  // Delay detail table with filters
+  window._delayData = delayed;
+
+  const delayFilterBar = document.getElementById('delayDetailFilterBar');
+  const delayMonths = [...new Set(delayed.map(d => d.month))].sort((a,b) => a-b);
+  const delayCusts = [...new Set(delayed.map(d => d.customer))].sort();
+  const delayOwners = [...new Set(delayed.map(d => d.delayOwner || '미분류'))].sort();
+
+  let dfHtml = '';
+  dfHtml += '<div class="form-group"><label>고객사</label><select id="delayFltCust" onchange="renderDelayDetailTable()"><option value="ALL">전체</option>' +
+    delayCusts.map(c => `<option value="${c}">${c}</option>`).join('') + '</select></div>';
+  dfHtml += '<div class="form-group"><label>지연주체</label><select id="delayFltOwner" onchange="renderDelayDetailTable()"><option value="ALL">전체</option>' +
+    delayOwners.map(d => `<option value="${d}">${d}</option>`).join('') + '</select></div>';
+  delayFilterBar.innerHTML = dfHtml;
+  delayFilterBar.style.display = 'flex';
+
+  renderDelayDetailTable();
+}
+
+function renderDelayDetailTable() {
+  let data = window._delayData || [];
+
+  const fltCust = document.getElementById('delayFltCust');
+  const fltOwner = document.getElementById('delayFltOwner');
+
+  if (fltCust && fltCust.value !== 'ALL') data = data.filter(d => d.customer === fltCust.value);
+  if (fltOwner && fltOwner.value !== 'ALL') data = data.filter(d => (d.delayOwner || '미분류') === fltOwner.value);
+
+  document.getElementById('delayDetailCount').textContent = `${data.length}건 표시 / 전체 ${(window._delayData||[]).length}건`;
+
+  const dt = document.getElementById('delayDetailTable');
+  let html = '<thead><tr><th>월</th><th>고객사</th><th>PO번호</th><th>제품명</th><th>발주수량</th><th>지연주체</th><th>지연사유 상세</th><th>출고LT</th><th>자재입고후LT</th></tr></thead><tbody>';
+  data.sort((a, b) => a.month - b.month || a.customer.localeCompare(b.customer)).forEach(d => {
+    html += `<tr><td>${d.month}월</td><td>${d.customer}</td><td>${d.poNumber}</td>
+      <td style="text-align:left; max-width:250px; overflow:hidden; text-overflow:ellipsis;">${d.productName}</td>
+      <td>${d.orderQty.toLocaleString()}</td><td><span class="badge badge-ng">${d.delayOwner || '미분류'}</span></td>
+      <td style="text-align:left; max-width:250px; white-space:normal; word-break:break-word; font-size:11px; line-height:1.4;">${d.delayDetail || ''}</td>
+      <td>${d.leadTime}</td><td>${d.matLeadTime}</td></tr>`;
+  });
+  if (data.length === 0) html += '<tr><td colspan="9" style="padding:20px; color:#999; text-align:center;">조건에 맞는 데이터가 없습니다.</td></tr>';
+  html += '</tbody>';
+  dt.innerHTML = html;
+}
+
+// ==================== RENDER: UPLOAD ====================
+function renderUpload() {
+  const hist = loadHistory();
+  const histDiv = document.getElementById('uploadHistory');
+  const histList = document.getElementById('uploadHistoryList');
+  if (hist.length > 0) {
+    histDiv.style.display = 'block';
+    histList.innerHTML = hist.map(h =>
+      `<div class="upload-info">${new Date(h.date).toLocaleString('ko-KR')} - <strong>${h.fileName}</strong> (${h.count.toLocaleString()}건)</div>`
+    ).join('');
+  }
+
+  // Current data summary
+  const raw = loadRaw();
+  const summary = document.getElementById('currentDataSummary');
+  if (raw.length === 0) { summary.innerHTML = '<p style="color:#999;">업로드된 데이터가 없습니다.</p>'; return; }
+
+  const years = getYears(raw);
+  const customers = getCustomers(raw, years.length > 0 ? Math.max(...years) : new Date().getFullYear());
+  let html = '<table><thead><tr><th>고객사</th>';
+  years.forEach(y => { const months = getMonths(raw, y); months.forEach(m => html += `<th>${y}-${m}월</th>`); });
+  html += '<th>총건수</th></tr></thead><tbody>';
+  customers.forEach(c => {
+    html += `<tr><td style="font-weight:600;">${c}</td>`;
+    let total = 0;
+    years.forEach(y => {
+      const months = getMonths(raw, y);
+      months.forEach(m => {
+        const cnt = raw.filter(d => d.customer === c && d.year === y && d.month === m).length;
+        total += cnt;
+        html += `<td>${cnt > 0 ? cnt : '<span style="color:#ddd;">-</span>'}</td>`;
+      });
+    });
+    html += `<td style="font-weight:600;">${total}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  summary.innerHTML = html;
+
+  // Target inputs
+  const targets = loadTargets();
+  const targetsQR = loadTargetsQR();
+  const targetDiv = document.getElementById('targetInputs');
+  targetDiv.innerHTML = '<table style="font-size:12px; border-collapse:collapse;"><thead><tr><th style="padding:6px 12px;"></th>' +
+    years.map(y => `<th style="padding:6px 12px;">${y}년</th>`).join('') +
+    '</tr></thead><tbody><tr><td style="padding:6px 12px; font-weight:600;">납기준수율 목표</td>' +
+    years.map(y => `<td style="padding:6px 8px;"><input type="number" id="targetDR_${y}" value="${targets[y]||85}" min="0" max="100" style="width:60px; padding:4px 8px; border:1px solid #ddd; border-radius:4px; text-align:center;">%</td>`).join('') +
+    '</tr><tr><td style="padding:6px 12px; font-weight:600;">수량완납율 목표</td>' +
+    years.map(y => `<td style="padding:6px 8px;"><input type="number" id="targetQR_${y}" value="${targetsQR[y]||85}" min="0" max="100" style="width:60px; padding:4px 8px; border:1px solid #ddd; border-radius:4px; text-align:center;">%</td>`).join('') +
+    '</tr></tbody></table>';
+}
+
+function saveTargets() {
+  const targets = loadTargets();
+  const targetsQR = loadTargetsQR();
+  const years = getYears(loadRaw());
+  years.forEach(y => {
+    const drEl = document.getElementById(`targetDR_${y}`);
+    const qrEl = document.getElementById(`targetQR_${y}`);
+    if (drEl) targets[y] = +drEl.value;
+    if (qrEl) targetsQR[y] = +qrEl.value;
+  });
+  save(STORE.TARGETS, targets);
+  save(STORE.TARGETS_QR, targetsQR);
+  alert('목표가 저장되었습니다.');
+  refresh();
+}
+
+// ==================== EXPORT ====================
+function exportCustomerExcel() {
+  const raw = loadRaw();
+  const year = +document.getElementById('custFilterYear').value;
+  const cust = document.getElementById('custFilterCustomer').value;
+  const custData = raw.filter(d => d.year === year && d.customer === cust);
+
+  let csv = '\uFEFF월,PO번호,제품코드,제품명,발주수량,납품수량,준수여부,지연주체,출고리드타임,자재입고후리드타임\n';
+  custData.sort((a,b) => a.month - b.month).forEach(d => {
+    csv += `${d.month}월,${d.poNumber},"${d.productCode}","${d.productName}",${d.orderQty},${d.deliveredQty},${d.compliance},${d.delayOwner},${d.leadTime},${d.matLeadTime}\n`;
+  });
+  downloadFile(`${cust}_${year}년_납기관리.csv`, csv, 'text/csv');
+}
+
+function exportShareFile() {
+  const raw = loadRaw();
+  if (raw.length === 0) { alert('업로드된 데이터가 없습니다.'); return; }
+
+  const data = {
+    raw: loadRaw(),
+    priority: loadPriorityAll(),
+    targets: loadTargets(),
+    targetsQR: loadTargetsQR(),
+    history: loadHistory()
+  };
+
+  const dataJson = JSON.stringify(data);
+
+  // 데이터 자동 로드 스크립트
+  const embedScript = '<script>\n(function(){\n  var d = ' + dataJson + ';\n' +
+    '  if(d.raw) localStorage.setItem("dd_raw_data", JSON.stringify(d.raw));\n' +
+    '  if(d.priority) localStorage.setItem("dd_priority", JSON.stringify(d.priority));\n' +
+    '  if(d.targets) localStorage.setItem("dd_targets", JSON.stringify(d.targets));\n' +
+    '  if(d.targetsQR) localStorage.setItem("dd_targets_qr", JSON.stringify(d.targetsQR));\n' +
+    '  if(d.history) localStorage.setItem("dd_upload_history", JSON.stringify(d.history));\n' +
+    '})();\n<\/script>\n';
+
+  // 현재 페이지의 전체 HTML을 복제 (DOM이 아닌 원본 구조 유지)
+  const docEl = document.documentElement.cloneNode(true);
+  // 동적으로 변경된 내용 제거 (테이블, 차트 등)
+  const dynIds = ['kpiRow','summaryDeliveryTable','summaryQuantityTable','custKpiRow','custDetailTable','custRawTable',
+    'delayDetailTable','delayReasonLegend','summaryResult','currentDataSummary','uploadHistoryList',
+    'recentTable','rawFilterBar','rawFilterCount','delayDetailFilterBar','delayDetailCount'];
+  dynIds.forEach(id => { const el = docEl.querySelector('#'+id); if(el) el.innerHTML = ''; });
+  // canvas 초기화
+  docEl.querySelectorAll('canvas').forEach(c => { const parent = c.parentNode; const newC = document.createElement('canvas'); newC.id = c.id; parent.replaceChild(newC, c); });
+
+  // head의 첫번째 자식으로 데이터 스크립트 삽입
+  const headEl = docEl.querySelector('head');
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = embedScript;
+  headEl.insertBefore(tempDiv.firstChild, headEl.firstChild);
+
+  const fullHtml = '<!DOCTYPE html>\n' + docEl.outerHTML;
+  const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const now = new Date();
+  const dateStr = now.getFullYear() + String(now.getMonth()+1).padStart(2,'0');
+  a.download = '납기관리_대시보드_' + dateStr + '.html';
+  a.click();
+  alert('공유용 파일이 다운로드되었습니다.\n이 파일을 팀즈에 올리면 팀원들이 바로 열어볼 수 있습니다.');
+}
+
+function exportBackup() {
+  const backup = { raw: loadRaw(), priority: loadPriorityAll(), targets: loadTargets(), targetsQR: loadTargetsQR(), history: loadHistory(), date: new Date().toISOString() };
+  downloadFile('dashboard_backup.json', JSON.stringify(backup), 'application/json');
+}
+
+function importBackup(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const b = JSON.parse(e.target.result);
+      if (b.raw) save(STORE.RAW, b.raw);
+      if (b.priority) save(STORE.PRIORITY, b.priority);
+      if (b.targets) save(STORE.TARGETS, b.targets);
+      if (b.history) save(STORE.HISTORY, b.history);
+      alert('복원 완료');
+      location.reload();
+    } catch { alert('유효하지 않은 파일입니다.'); }
+  };
+  reader.readAsText(file);
+}
+
+function downloadFile(name, content, type) {
+  const blob = new Blob([content], { type: type + ';charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+}
+
+// ==================== EVENT LISTENERS ====================
+document.getElementById('filterYear').addEventListener('change', function() {
+  updateCustomerDropdownForYear('filterCustomer', +this.value, true);
+  renderDashboard();
+});
+document.getElementById('filterCustomer').addEventListener('change', renderDashboard);
+document.getElementById('custFilterYear').addEventListener('change', function() {
+  updateCustomerDropdownForYear('custFilterCustomer', +this.value, false);
+  renderCustomerDetail();
+});
+document.getElementById('custFilterCustomer').addEventListener('change', renderCustomerDetail);
+['delayFilterYear','delayFilterMonth'].forEach(id =>
+  document.getElementById(id).addEventListener('change', renderDelayAnalysis));
+
+// ==================== RENDER: SUMMARY ====================
+function initSummaryDropdowns() {
+  const raw = loadRaw();
+  const years = getYears(raw);
+  ['sumAsYear','sumToYear'].forEach(id => {
+    const el = document.getElementById(id);
+    el.innerHTML = years.map(y => `<option value="${y}">${y}년</option>`).join('');
+  });
+  ['sumAsMonth','sumToMonth'].forEach(id => {
+    const el = document.getElementById(id);
+    el.innerHTML = MONTHS.map(m => `<option value="${m}">${m}월</option>`).join('');
+  });
+  // 기본값: AS-IS=전월, TO-BE=현재월
+  const now = new Date();
+  const curMonth = now.getMonth() + 1;
+  const prevMonth = curMonth === 1 ? 12 : curMonth - 1;
+  const curYear = years.length > 0 ? Math.max(...years) : now.getFullYear();
+  document.getElementById('sumToYear').value = curYear;
+  document.getElementById('sumToMonth').value = curMonth <= 12 ? curMonth : 1;
+  document.getElementById('sumAsYear').value = prevMonth === 12 ? curYear - 1 : curYear;
+  document.getElementById('sumAsMonth').value = prevMonth;
+}
+
+function renderSummary() {
+  const raw = loadRaw();
+  const asYear = +document.getElementById('sumAsYear').value;
+  const asMonth = +document.getElementById('sumAsMonth').value;
+  const toYear = +document.getElementById('sumToYear').value;
+  const toMonth = +document.getElementById('sumToMonth').value;
+  const targets = loadTargets();
+  const targetsQR = loadTargetsQR();
+  const targetDR = targets[toYear] || 85;
+  const targetQR = targetsQR[toYear] || 85;
+  const priority = loadPriority(toYear);
+
+  const asData = raw.filter(d => d.year === asYear && d.month === asMonth);
+  const toData = raw.filter(d => d.year === toYear && d.month === toMonth);
+
+  if (asData.length === 0 && toData.length === 0) {
+    document.getElementById('summaryResult').innerHTML = '<div class="sum-section"><p style="color:#999;">선택한 기간에 데이터가 없습니다.</p></div>';
+    return;
+  }
+
+  // Overall KPIs
+  function calcKpi(data) {
+    const tot = data.length;
+    const ot = data.filter(d => d.compliance === '준수').length;
+    const oq = data.reduce((s, d) => s + d.orderQty, 0);
+    const dq = data.reduce((s, d) => s + d.deliveredQty, 0);
+    const ng = tot - ot;
+    return { tot, ot, ng, dr: tot > 0 ? ot / tot * 100 : 0, oq, dq, qr: oq > 0 ? dq / oq * 100 : 0 };
+  }
+  const asKpi = calcKpi(asData);
+  const toKpi = calcKpi(toData);
+  const drDiff = toKpi.dr - asKpi.dr;
+  const qrDiff = toKpi.qr - asKpi.qr;
+  const ngDiff = toKpi.ng - asKpi.ng;
+
+  function diffHtml(diff, unit, reverse) {
+    const good = reverse ? diff < 0 : diff > 0;
+    if (Math.abs(diff) < 0.1) return '<span style="color:#888;">변동없음</span>';
+    const sign = diff > 0 ? '+' : '';
+    return good
+      ? `<span style="color:#1a237e;">▲ ${sign}${diff.toFixed(1)}${unit}</span>`
+      : `<span style="color:#c62828;">▼ ${sign}${diff.toFixed(1)}${unit}</span>`;
+  }
+
+  let html = '';
+  const asLabel = `${asYear}년 ${asMonth}월`;
+  const toLabel = `${toYear}년 ${toMonth}월`;
+
+  // ===== 1. KPI 비교 =====
+  html += `<div class="sum-section"><h3>📊 KPI 비교 (${asLabel} → ${toLabel})</h3>`;
+  html += '<div class="sum-kpi-grid">';
+  html += `<div class="sum-kpi"><div class="label">납기준수율</div><div class="value">${diffHtml(drDiff, '%p')}</div><div style="font-size:11px; color:#333; margin-top:6px;">${asKpi.dr.toFixed(1)}% → <strong>${toKpi.dr.toFixed(1)}%</strong></div><div style="font-size:10px;color:#aaa;">목표: ${targetDR}%</div></div>`;
+  html += `<div class="sum-kpi"><div class="label">수량완납율</div><div class="value">${diffHtml(qrDiff, '%p')}</div><div style="font-size:11px; color:#333; margin-top:6px;">${asKpi.qr.toFixed(1)}% → <strong>${toKpi.qr.toFixed(1)}%</strong></div><div style="font-size:10px;color:#aaa;">목표: ${targetQR}%</div></div>`;
+  html += `<div class="sum-kpi"><div class="label">미준수 건수</div><div class="value">${diffHtml(ngDiff, '건', true)}</div><div style="font-size:11px; color:#333; margin-top:6px;">${asKpi.ng}건 → <strong>${toKpi.ng}건</strong></div><div style="font-size:10px;color:#aaa;">전체 ${toKpi.tot}건 중</div></div>`;
+  html += '</div></div>';
+
+  // ===== 2. 지연 주체별 변동 비교 (KPI 카드 스타일) =====
+  const asDelay = asData.filter(d => d.compliance === '미준수');
+  const toDelay = toData.filter(d => d.compliance === '미준수');
+  const asReasons = {}, toReasons = {};
+  asDelay.forEach(d => { const r = d.delayOwner || '미분류'; asReasons[r] = (asReasons[r] || 0) + 1; });
+  toDelay.forEach(d => { const r = d.delayOwner || '미분류'; toReasons[r] = (toReasons[r] || 0) + 1; });
+  const allReasons = [...new Set([...Object.keys(asReasons), ...Object.keys(toReasons)])].sort((a,b) => (toReasons[b]||0) - (toReasons[a]||0));
+
+  html += `<div class="sum-section"><h3>⚠️ 지연 주체별 변동 비교</h3>`;
+  html += `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:12px;">`;
+  allReasons.forEach(r => {
+    const av = asReasons[r] || 0;
+    const tv = toReasons[r] || 0;
+    const d = tv - av;
+    const borderColor = d > 0 ? '#c62828' : d < 0 ? '#1a237e' : '#e0e0e0';
+    html += `<div style="padding:14px; border-radius:8px; background:#f5f6fa; border-left:4px solid ${borderColor}; text-align:center;">`;
+    html += `<div style="font-size:12px; font-weight:700; color:#333; margin-bottom:6px;">${r}</div>`;
+    html += `<div style="font-size:20px; font-weight:700; color:${d > 0 ? '#c62828' : d < 0 ? '#1a237e' : '#888'};">${d > 0 ? '+' : ''}${d}건</div>`;
+    html += `<div style="font-size:11px; color:#888; margin-top:4px;">${av}건 → <strong>${tv}건</strong></div>`;
+    html += '</div>';
+  });
+  html += '</div></div>';
+
+  // ===== 3. 총평 (자동 코멘트 + 주체별 상세) =====
+  const toDelayAll = toData.filter(d => d.compliance === '미준수');
+  const ownerMap = {};
+  toDelayAll.forEach(d => { const owner = d.delayOwner || '미분류'; if (!ownerMap[owner]) ownerMap[owner] = []; ownerMap[owner].push(d); });
+  const ownerSorted = Object.keys(ownerMap).sort((a,b) => ownerMap[b].length - ownerMap[a].length);
+
+  html += `<div class="sum-section">`;
+  html += `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:2px solid #e8eaf6; padding-bottom:8px;">`;
+  html += `<h3 style="margin:0; color:#1a237e;">📝 총평</h3>`;
+  html += `<button class="btn btn-primary" style="font-size:11px; padding:6px 14px;" onclick="copyFullReport(${toYear}, ${toMonth})">전체 복사</button>`;
+  html += '</div>';
+
+  // 자동 생성 코멘트
+  html += '<div style="font-size:13px; line-height:2; margin-bottom:16px; padding:16px; background:#f8f9ff; border-radius:8px;">';
+  // KPI 코멘트
+  const drStatus = toKpi.dr >= targetDR;
+  const qrStatus = toKpi.qr >= targetQR;
+  html += `<p>${toLabel} 납기준수율은 <strong style="color:#1a237e;">${toKpi.dr.toFixed(1)}%</strong>로 ${asLabel} 대비 <strong style="color:${drDiff >= 0 ? '#1a237e' : '#c62828'};">${Math.abs(drDiff).toFixed(1)}%p ${drDiff >= 0 ? '상승' : '하락'}</strong>하여 목표(${targetDR}%)를 ${drStatus ? '<strong style="color:#1a237e;">달성</strong>' : '<strong style="color:#c62828;">미달</strong>'}하였습니다.</p>`;
+  html += `<p>수량완납율은 <strong style="color:#2e7d32;">${toKpi.qr.toFixed(1)}%</strong>로 ${asLabel} 대비 <strong style="color:${qrDiff >= 0 ? '#1a237e' : '#c62828'};">${Math.abs(qrDiff).toFixed(1)}%p ${qrDiff >= 0 ? '상승' : '하락'}</strong>하여 목표(${targetQR}%)를 ${qrStatus ? '<strong style="color:#1a237e;">달성</strong>' : '<strong style="color:#c62828;">미달</strong>'}하였습니다.</p>`;
+
+  // 지연 주체별 변동 코멘트
+  const increased = allReasons.filter(r => (toReasons[r]||0) > (asReasons[r]||0));
+  const decreased = allReasons.filter(r => (toReasons[r]||0) < (asReasons[r]||0));
+  const newReasons = allReasons.filter(r => !(asReasons[r]) && (toReasons[r]||0) > 0);
+
+  if (increased.length > 0) {
+    html += `<p style="color:#c62828;">⚠ ${asLabel} 대비 미준수 증가 주체: `;
+    html += increased.map(r => `<strong>${r}</strong>(${asReasons[r]||0}→${toReasons[r]}건, +${(toReasons[r]||0)-(asReasons[r]||0)}건)`).join(', ');
+    html += '</p>';
+  }
+  if (decreased.length > 0) {
+    html += `<p style="color:#1a237e;">✓ ${asLabel} 대비 미준수 감소 주체: `;
+    html += decreased.map(r => `<strong>${r}</strong>(${asReasons[r]}→${toReasons[r]||0}건, ${(toReasons[r]||0)-(asReasons[r]||0)}건)`).join(', ');
+    html += '</p>';
+  }
+
+  // 고객사 변동 코멘트
+  const customers = [...new Set([...asData.map(d=>d.customer), ...toData.map(d=>d.customer)])].sort((a,b) => (priority[a]||99) - (priority[b]||99));
+  const custChanges = customers.map(c => {
+    const asC = calcKpi(asData.filter(d => d.customer === c));
+    const toC = calcKpi(toData.filter(d => d.customer === c));
+    return { c, drDiff: toC.dr - asC.dr, qrDiff: toC.qr - asC.qr, ngDiff: toC.ng - asC.ng, toNg: toC.ng, toTot: toC.tot, asTot: asC.tot };
+  });
+  const drDown = custChanges.filter(x => x.drDiff < -5 && x.toTot > 0).sort((a,b) => a.drDiff - b.drDiff).slice(0, 3);
+  const drUp = custChanges.filter(x => x.drDiff > 5 && x.toTot > 0).sort((a,b) => b.drDiff - a.drDiff).slice(0, 3);
+
+  if (drDown.length > 0) {
+    html += `<p>📉 납기준수율 주요 하락: ${drDown.map(x => `<strong style="color:#c62828;">${x.c}</strong>(${x.drDiff.toFixed(1)}%p)`).join(', ')}</p>`;
+  }
+  if (drUp.length > 0) {
+    html += `<p>📈 납기준수율 주요 상승: ${drUp.map(x => `<strong style="color:#1a237e;">${x.c}</strong>(+${x.drDiff.toFixed(1)}%p)`).join(', ')}</p>`;
+  }
+  html += '</div>';
+
+  // 주체별 상세 내역
+  if (toDelayAll.length > 0) {
+    html += '<div style="font-size:13px; font-weight:700; color:#333; margin:16px 0 12px;">주체별 미준수 상세 내역:</div>';
+    ownerSorted.forEach(owner => {
+      const items = ownerMap[owner];
+      const asCount = asReasons[owner] || 0;
+      const diff = items.length - asCount;
+      const diffText = diff !== 0 ? ` <span style="color:${diff > 0 ? '#c62828' : '#1a237e'}; font-size:12px;">(${asLabel} 대비 ${diff > 0 ? '+' : ''}${diff}건)</span>` : '';
+
+      const custGroup = {};
+      items.forEach(d => { if (!custGroup[d.customer]) custGroup[d.customer] = []; custGroup[d.customer].push(d); });
+      const custSorted = Object.keys(custGroup).sort((a,b) => custGroup[b].length - custGroup[a].length);
+
+      html += `<div style="margin-bottom:14px; padding:14px 16px; border:1px solid #e0e0e0; border-radius:8px; background:#fff;">`;
+      html += `<div style="font-size:14px; font-weight:700; color:#1a237e; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid #eee;">▶ ${owner} (${items.length}건)${diffText}</div>`;
+      custSorted.forEach(c => {
+        const cItems = custGroup[c];
+        html += `<div style="margin-bottom:6px; padding-left:8px;">`;
+        html += `<div style="font-size:12px; font-weight:600; color:#333; margin-bottom:3px;">• ${c} (${cItems.length}건)</div>`;
+        cItems.forEach(d => {
+          html += `<div style="font-size:11px; color:#555; padding-left:14px; margin-bottom:2px; line-height:1.5;">- ${d.productName}`;
+          if (d.delayDetail) html += ` <span style="color:#c62828;">→ ${d.delayDetail}</span>`;
+          html += '</div>';
+        });
+        html += '</div>';
+      });
+      html += '</div>';
+    });
+  } else {
+    html += '<div class="sum-comment sum-good">미준수 건이 없습니다.</div>';
+  }
+  html += '</div>';
+
+  document.getElementById('summaryResult').innerHTML = html;
+}
+
+function copyFullReport(year, month) {
+  const raw = loadRaw();
+  const toData = raw.filter(d => d.year === year && d.month === month);
+  const toDelay = toData.filter(d => d.compliance === '미준수');
+  const tot = toData.length;
+  const ot = toData.filter(d => d.compliance === '준수').length;
+  const oq = toData.reduce((s, d) => s + d.orderQty, 0);
+  const dq = toData.reduce((s, d) => s + d.deliveredQty, 0);
+  const dr = tot > 0 ? (ot / tot * 100).toFixed(1) : 0;
+  const qr = oq > 0 ? (dq / oq * 100).toFixed(1) : 0;
+
+  let text = `[${year}년 ${month}월 납기 미준수 현황 보고]\n\n`;
+  text += `■ 전체 현황\n`;
+  text += `  - 납기준수율: ${dr}% (준수 ${ot}건 / 전체 ${tot}건)\n`;
+  text += `  - 수량완납율: ${qr}%\n`;
+  text += `  - 미준수 건수: ${toDelay.length}건\n\n`;
+
+  const ownerMap = {};
+  toDelay.forEach(d => {
+    const owner = d.delayOwner || '미분류';
+    if (!ownerMap[owner]) ownerMap[owner] = [];
+    ownerMap[owner].push(d);
+  });
+
+  Object.keys(ownerMap).sort((a,b) => ownerMap[b].length - ownerMap[a].length).forEach(owner => {
+    const items = ownerMap[owner];
+    text += `■ 지연주체: ${owner} (${items.length}건)\n`;
+    const custGroup = {};
+    items.forEach(d => { if (!custGroup[d.customer]) custGroup[d.customer] = []; custGroup[d.customer].push(d); });
+    Object.keys(custGroup).sort((a,b) => custGroup[b].length - custGroup[a].length).forEach(c => {
+      const cItems = custGroup[c];
+      text += `  • ${c} (${cItems.length}건)\n`;
+      cItems.forEach((d, i) => {
+        text += `    ${i+1}. ${d.productName}`;
+        if (d.delayDetail) text += ` → ${d.delayDetail}`;
+        text += '\n';
+      });
+    });
+    text += '\n';
+  });
+
+  text += `상기 건에 대해 각 주체별 개선 조치를 요청드립니다.\n`;
+
+  navigator.clipboard.writeText(text).then(() => {
+    alert('전체 보고서가 클립보드에 복사되었습니다.');
+  }).catch(() => {
+    const ta = document.createElement('textarea'); ta.value = text;
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta);
+    alert('전체 보고서가 클립보드에 복사되었습니다.');
+  });
+}
+
+function copyOwnerReport(idx, owner, year, month) {
+  const raw = loadRaw();
+  const data = raw.filter(d => d.year === year && d.month === month && d.compliance === '미준수' && (d.delayOwner || '미분류') === owner);
+
+  const custBreakdown = {};
+  data.forEach(d => {
+    if (!custBreakdown[d.customer]) custBreakdown[d.customer] = [];
+    custBreakdown[d.customer].push(d);
+  });
+
+  let text = `[${year}년 ${month}월 납기 미준수 건 - 지연주체: ${owner}]\n`;
+  text += `총 ${data.length}건\n\n`;
+
+  Object.keys(custBreakdown).sort((a,b) => custBreakdown[b].length - custBreakdown[a].length).forEach(c => {
+    const items = custBreakdown[c];
+    text += `■ ${c} (${items.length}건)\n`;
+    items.forEach((d, i) => {
+      text += `  ${i+1}. ${d.productName}\n`;
+      text += `     발주수량: ${d.orderQty.toLocaleString()} / 출고LT: ${d.leadTime}일\n`;
+      if (d.delayDetail) text += `     사유: ${d.delayDetail}\n`;
+    });
+    text += '\n';
+  });
+
+  text += `상기 건에 대해 개선 조치를 요청드립니다.\n`;
+
+  navigator.clipboard.writeText(text).then(() => {
+    alert('클립보드에 복사되었습니다.\n메일이나 메신저에 붙여넣기 하세요.');
+  }).catch(() => {
+    // fallback
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    alert('클립보드에 복사되었습니다.');
+  });
+}
+
+// ==================== REFRESH ====================
+function refresh() {
+  const activeTab = document.querySelector('.tab.active').dataset.tab;
+  if (activeTab === 'dashboard') renderDashboard();
+  else if (activeTab === 'customer') renderCustomerDetail();
+  else if (activeTab === 'delay') renderDelayAnalysis();
+  else if (activeTab === 'summary') initSummaryDropdowns();
+  else if (activeTab === 'upload') renderUpload();
+}
+
+// ==================== INIT ====================
+refreshDropdowns();
+renderUpload();
+renderDashboard();
+</script>
+</body>
+</html>
