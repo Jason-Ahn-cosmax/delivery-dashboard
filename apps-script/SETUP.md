@@ -81,27 +81,19 @@
    git push
    ```
 
-## 7. Vercel로 배포 (private repo 유지)
+## 7. 개인 repo로 미러링 + GitHub Pages
 
-GlobalSCMTeam 조직 정책상 GitHub Pages는 public repo만 지원됩니다. Vercel 무료 플랜은 private GitHub repo를 그대로 배포해주므로 코드 비공개를 유지하면서 URL을 제공받을 수 있습니다.
+조직 정책상 일반 멤버는 GlobalSCMTeam repo를 public으로 전환할 수 없습니다. 회사망에서 Vercel은 차단되지만 `*.github.io`는 허용되므로, **본인 개인 GitHub 계정에 public repo를 만들어 거기서 Pages 호스팅**합니다.
 
-1. https://vercel.com/signup 에 접속
-2. **Continue with GitHub** 클릭 → 본인 GitHub 계정(`Jason-Ahn-cosmax`)으로 로그인
-3. Vercel 대시보드 → **Add New** → **Project**
-4. **Import Git Repository** 섹션에 GitHub repo 목록이 보임. `GlobalSCMTeam/delivery-dashboard`가 안 보이면:
-   - **Adjust GitHub App Permissions** 클릭
-   - 조직 `GlobalSCMTeam` 선택 → Repository access에서 `delivery-dashboard` 추가 → Save
-   - ⚠️ 조직 정책상 third-party app 설치에 owner 승인이 필요할 수 있음. 그 경우 owner에게 "Vercel 앱 승인 요청" 메일이 자동 발송됨
-5. `delivery-dashboard` 옆 **Import** 클릭
-6. 설정 페이지에서:
-   - **Framework Preset**: `Other` (자동 감지됨)
-   - **Build Command**: 비워둠
-   - **Output Directory**: 비워둠 (또는 `.`)
-   - **Root Directory**: 그대로 (`./`)
-7. **Deploy** 클릭. 30초 이내 완료
-8. 완료 화면에 표시되는 URL 복사 (예: `https://delivery-dashboard-abc123.vercel.app`)
-   - 마음에 들면 Project Settings → Domains에서 더 깔끔한 이름으로 변경 가능 (예: `delivery-dashboard.vercel.app` 사용 가능하면 점유)
-9. 이후 main 브랜치에 push할 때마다 Vercel이 자동으로 재배포 — 별도 작업 불필요
+```
+[조직 repo] GlobalSCMTeam/delivery-dashboard (private — 운영 기록용)
+   ↓ git push personal
+[개인 repo] Jason-Ahn-cosmax/delivery-dashboard (public — Pages 호스팅용)
+   ↓ Pages 자동 빌드
+[배포 URL]  https://jason-ahn-cosmax.github.io/delivery-dashboard/
+```
+
+이 단계는 한 번만 설정하면 됩니다. 이후 push는 한 줄 명령으로 양쪽에 동시 반영됩니다. 자세한 명령은 별도 가이드(또는 운영자에게 문의)를 따르면 됩니다.
 
 ## 8. 동료들에게 공유
 
