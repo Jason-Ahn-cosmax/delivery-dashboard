@@ -50,17 +50,19 @@ function setup() {
   Logger.log('Setup complete. Sheets ready: ' + Object.values(SHEETS).join(', '));
 }
 
-function setUploadToken_() {
+function generateUploadToken() {
   // Generates and stores a random token. Re-run to rotate.
+  // Public name (no trailing underscore) so it appears in the Apps Script
+  // editor's function dropdown.
   const token = Utilities.getUuid().replace(/-/g, '').slice(0, 20);
   PropertiesService.getScriptProperties().setProperty('UPLOAD_TOKEN', token);
   Logger.log('NEW upload token: ' + token);
   Logger.log('Share this with admins who will upload Excel files.');
 }
 
-function showUploadToken_() {
+function showUploadToken() {
   const t = PropertiesService.getScriptProperties().getProperty('UPLOAD_TOKEN');
-  Logger.log(t ? ('Current upload token: ' + t) : 'No token set. Run setUploadToken_ first.');
+  Logger.log(t ? ('Current upload token: ' + t) : 'No token set. Run generateUploadToken first.');
 }
 
 // ---------- web app entry points ----------
