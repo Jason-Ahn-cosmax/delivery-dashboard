@@ -325,17 +325,86 @@
 </div>
 
 <script>
+// ==================== BACKEND CONFIG ====================
+// Apps Script web app URL (ends with /exec). Leave empty to use local-only mode.
+// See apps-script/SETUP.md for how to obtain this URL.
+const BACKEND_URL = '';
+
 // ==================== DATA STORE ====================
 const STORE = {
   RAW: 'dd_raw_data',
   PRIORITY: 'dd_priority',
   TARGETS: 'dd_targets',
   TARGETS_QR: 'dd_targets_qr',
-  HISTORY: 'dd_upload_history'
+  HISTORY: 'dd_upload_history',
+  TOKEN: 'dd_upload_token'
 };
 
 function load(key, def) { try { return JSON.parse(localStorage.getItem(key)) || def; } catch { return def; } }
 function save(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
+
+// ==================== BACKEND SYNC ====================
+const backendEnabled = () => !!BACKEND_URL && /\/exec(\?|$)/.test(BACKEND_URL);
+
+async function syncFromBackend() {
+  if (!backendEnabled()) return false;
+  try {
+    const resp = await fetch(BACKEND_URL, { method: 'GET' });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    if (Array.isArray(data.raw)) save(STORE.RAW, data.raw);
+    if (data.priority) save(STORE.PRIORITY, data.priority);
+    if (data.targets) save(STORE.TARGETS, data.targets);
+    if (data.targetsQR) save(STORE.TARGETS_QR, data.targetsQR);
+    if (Array.isArray(data.history)) save(STORE.HISTORY, data.history);
+    if (data.updatedAt) localStorage.setItem('dd_backend_updated_at', data.updatedAt);
+    return true;
+  } catch (err) {
+    console.error('[backend] load failed:', err);
+    return false;
+  }
+}
+
+async function syncToBackend() {
+  if (!backendEnabled()) return false;
+  let token = localStorage.getItem(STORE.TOKEN) || '';
+  if (!token) {
+    token = prompt('업로드 토큰을 입력하세요 (관리자에게 문의):') || '';
+    if (!token) return false;
+    localStorage.setItem(STORE.TOKEN, token);
+  }
+  const payload = {
+    token,
+    raw: loadRaw(),
+    priority: loadPriorityAll(),
+    targets: loadTargets(),
+    targetsQR: loadTargetsQR(),
+    history: loadHistory()
+  };
+  try {
+    const resp = await fetch(BACKEND_URL, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      redirect: 'follow'
+      // intentionally no Content-Type to avoid CORS preflight
+    });
+    const result = await resp.json();
+    if (!result.ok) {
+      if (result.error && result.error.toLowerCase().includes('token')) {
+        localStorage.removeItem(STORE.TOKEN);
+        alert('업로드 토큰이 올바르지 않습니다. 다시 시도해주세요.');
+      } else {
+        alert('서버 저장 실패: ' + result.error);
+      }
+      return false;
+    }
+    if (result.updatedAt) localStorage.setItem('dd_backend_updated_at', result.updatedAt);
+    return true;
+  } catch (err) {
+    alert('서버 통신 오류: ' + err.message);
+    return false;
+  }
+}
 
 function loadRaw() { return load(STORE.RAW, []); }
 function loadPriorityAll() { return load(STORE.PRIORITY, {}); }
@@ -378,7 +447,7 @@ fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.
 function handleFile(file) {
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = function(e) {
+  reader.onload = async function(e) {
     try {
       const wb = XLSX.read(e.target.result, { type: 'array' });
 
@@ -465,7 +534,12 @@ function handleFile(file) {
 
       const p25_5 = Object.entries(parsedPriority['2025']||{}).find(([k,v])=>v===5);
       const p26_5 = Object.entries(parsedPriority['2026']||{}).find(([k,v])=>v===5);
-      alert(`업로드 완료!\n- Raw data: ${rawData.length}건\n- 고객사: ${[...new Set(rawData.map(d=>d.customer))].length}개\n- 25년 5위: ${p25_5?p25_5[0]:'N/A'} / 26년 5위: ${p26_5?p26_5[0]:'N/A'}`);
+      let summary = `업로드 완료!\n- Raw data: ${rawData.length}건\n- 고객사: ${[...new Set(rawData.map(d=>d.customer))].length}개\n- 25년 5위: ${p25_5?p25_5[0]:'N/A'} / 26년 5위: ${p26_5?p26_5[0]:'N/A'}`;
+      if (backendEnabled()) {
+        const ok = await syncToBackend();
+        summary += ok ? '\n- 서버 동기화: 완료 (동료들이 새로고침하면 반영됨)' : '\n- 서버 동기화: 실패 (콘솔 확인)';
+      }
+      alert(summary);
       refreshDropdowns();
       refresh();
     } catch (err) {
@@ -1199,6 +1273,30 @@ function renderDelayDetailTable() {
 
 // ==================== RENDER: UPLOAD ====================
 function renderUpload() {
+  // Backend status banner
+  const uploadSec = document.getElementById('sec-upload');
+  let banner = document.getElementById('backendStatusBanner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'backendStatusBanner';
+    banner.className = 'upload-info';
+    banner.style.marginBottom = '16px';
+    uploadSec.insertBefore(banner, uploadSec.firstChild);
+  }
+  if (backendEnabled()) {
+    const ts = localStorage.getItem('dd_backend_updated_at');
+    const hasToken = !!localStorage.getItem(STORE.TOKEN);
+    banner.innerHTML = `🟢 서버 연결됨${ts ? ' · 최종 동기화: ' + new Date(ts).toLocaleString('ko-KR') : ''}` +
+      ` <button class="btn btn-outline" style="margin-left:12px; padding:4px 10px; font-size:11px;" onclick="(async()=>{await syncFromBackend(); refresh(); renderUpload();})()">서버에서 다시 불러오기</button>` +
+      (hasToken
+        ? ` <button class="btn btn-outline" style="margin-left:8px; padding:4px 10px; font-size:11px;" onclick="if(confirm('업로드 토큰을 지우시겠습니까?')){localStorage.removeItem(STORE.TOKEN);renderUpload();}">토큰 지우기</button>`
+        : ` <span style="margin-left:12px; color:#c62828;">업로드 토큰 미설정 (업로드 시 입력)</span>`);
+  } else {
+    banner.style.background = '#fff3e0';
+    banner.style.color = '#e65100';
+    banner.innerHTML = '⚪ 로컬 모드 (이 브라우저에만 저장). 서버 연결을 원하면 <code>BACKEND_URL</code>을 설정하세요.';
+  }
+
   const hist = loadHistory();
   const histDiv = document.getElementById('uploadHistory');
   const histList = document.getElementById('uploadHistoryList');
@@ -1248,7 +1346,7 @@ function renderUpload() {
     '</tr></tbody></table>';
 }
 
-function saveTargets() {
+async function saveTargets() {
   const targets = loadTargets();
   const targetsQR = loadTargetsQR();
   const years = getYears(loadRaw());
@@ -1260,7 +1358,12 @@ function saveTargets() {
   });
   save(STORE.TARGETS, targets);
   save(STORE.TARGETS_QR, targetsQR);
-  alert('목표가 저장되었습니다.');
+  let msg = '목표가 저장되었습니다.';
+  if (backendEnabled()) {
+    const ok = await syncToBackend();
+    msg += ok ? '\n서버에도 반영되었습니다.' : '\n서버 동기화 실패.';
+  }
+  alert(msg);
   refresh();
 }
 
@@ -1666,9 +1769,15 @@ function refresh() {
 }
 
 // ==================== INIT ====================
-refreshDropdowns();
-renderUpload();
-renderDashboard();
+(async () => {
+  if (backendEnabled()) {
+    document.getElementById('dataStats').textContent = '서버에서 데이터 불러오는 중...';
+    await syncFromBackend();
+  }
+  refreshDropdowns();
+  renderUpload();
+  renderDashboard();
+})();
 </script>
 </body>
 </html>
