@@ -1,0 +1,16 @@
+{
+  "name": "delivery-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "납기준수율 / 수량완납율 대시보드 (정적 호스팅 + Apps Script 백엔드)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": "18.x"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
