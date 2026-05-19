@@ -5,7 +5,7 @@ build:
     build:
       - npm install --omit=dev
 run:
-  runtime-version: 18
+  runtime-version: 18.20.4
   command: npm start
   network:
     port: 3000
